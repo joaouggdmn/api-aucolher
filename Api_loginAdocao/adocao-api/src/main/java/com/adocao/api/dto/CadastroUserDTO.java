@@ -1,0 +1,18 @@
+package com.adocao.api.dto;
+
+import jakarta.validation.constraints.*;
+
+public record CadastroUserDTO(
+
+        @NotBlank(message = "O nome é obrigatório")
+        @Size(min = 2, max = 150, message = "O nome deve ter entre 2 e 150 caracteres")
+        String nome,
+
+        @NotBlank(message = "O e-mail é obrigatório")
+        @Email(message = "E-mail em formato inválido")
+        String email,
+
+        @NotBlank(message = "A senha é obrigatória")
+        @Size(min = 6, message = "A senha deve ter no mínimo 6 caracteres")
+        String senha
+) {}
