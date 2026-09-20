@@ -14,5 +14,9 @@ public record CadastroUserDTO(
 
         @NotBlank(message = "A senha é obrigatória")
         @Size(min = 6, message = "A senha deve ter no mínimo 6 caracteres")
-        String senha
+        String senha,
+
+        @Size(max = FotoUrl.TAMANHO_MAXIMO, message = "A foto é grande demais")
+        @Pattern(regexp = FotoUrl.FORMATO, message = "Foto em formato inválido")
+        String fotoUrl
 ) {}

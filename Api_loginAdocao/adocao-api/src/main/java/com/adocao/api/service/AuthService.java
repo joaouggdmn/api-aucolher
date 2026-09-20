@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 
 @Service
@@ -41,14 +42,29 @@ public class AuthService {
             throw new BusinessException("Já existe uma ONG cadastrada com este CNPJ");
         }
 
+        // Fluxo temporário: sem etapa PENDENTE de aprovação (seção 7 das regras
+        // de negócio) — a ONG já nasce ativa e sem o selo de verificada
         Usuario usuario = Usuario.builder()
-                .nome(dto.nome())
+                .nome(dto.nome().trim())
                 .email(dto.email())
                 .senha(passwordEncoder.encode(dto.senha()))
                 .cnpj(cnpjLimpo)
                 .tipoUsuario(TipoUsuario.ONG)
                 .provider(AuthProvider.LOCAL)
                 .ativo(true)
+                .fotoUrl(textoOuNulo(dto.fotoUrl()))
+                .bio(textoOuNulo(dto.bio()))
+                .emailInstitucional(textoOuNulo(dto.emailInstitucional()))
+                .instagram(semArroba(dto.instagram()))
+                .twitter(semArroba(dto.twitter()))
+                .facebook(comProtocolo(dto.facebook()))
+                .cep(apenasDigitos(dto.cep()))
+                .logradouro(textoOuNulo(dto.logradouro()))
+                .numero(textoOuNulo(dto.numero()))
+                .complemento(textoOuNulo(dto.complemento()))
+                .bairro(textoOuNulo(dto.bairro()))
+                .cidade(textoOuNulo(dto.cidade()))
+                .estado(dto.estado().trim().toUpperCase(Locale.ROOT))
                 .build();
 
         usuario = usuarioRepository.save(usuario);
@@ -63,12 +79,13 @@ public class AuthService {
         }
 
         Usuario usuario = Usuario.builder()
-                .nome(dto.nome())
+                .nome(dto.nome().trim())
                 .email(dto.email())
                 .senha(passwordEncoder.encode(dto.senha()))
                 .tipoUsuario(TipoUsuario.USUARIO_COMUM)
                 .provider(AuthProvider.LOCAL)
                 .ativo(true)
+                .fotoUrl(textoOuNulo(dto.fotoUrl()))
                 .build();
 
         usuario = usuarioRepository.save(usuario);
@@ -76,24 +93,13 @@ public class AuthService {
         return gerarResposta(usuario);
     }
 
-    public AuthResponseDTO loginOng(LoginDTO dto) {
-        Usuario usuario = autenticar(dto);
-
-        if (usuario.getTipoUsuario() != TipoUsuario.ONG) {
-            throw new CredenciaisInvalidasException("Esta conta não está cadastrada como ONG");
-        }
-
-        return gerarResposta(usuario);
-    }
-
-    public AuthResponseDTO loginUsuarioComum(LoginDTO dto) {
-        Usuario usuario = autenticar(dto);
-
-        if (usuario.getTipoUsuario() != TipoUsuario.USUARIO_COMUM) {
-            throw new CredenciaisInvalidasException("Esta conta não está cadastrada como usuário comum");
-        }
-
-        return gerarResposta(usuario);
+    /**
+     * Login único para qualquer tipo de conta: valida só e-mail e senha.
+     * O papel (tipoUsuario) segue no payload e no JWT, e é o frontend que
+     * decide o que mostrar a partir dele.
+     */
+    public AuthResponseDTO login(LoginDTO dto) {
+        return gerarResposta(autenticar(dto));
     }
 
     private Usuario autenticar(LoginDTO dto) {
@@ -122,15 +128,30 @@ public class AuthService {
 
         String token = jwtService.gerarToken(usuario.getEmail(), claims);
 
-        UsuarioResponseDTO usuarioResponse = new UsuarioResponseDTO(
-                usuario.getId(),
-                usuario.getNome(),
-                usuario.getEmail(),
-                usuario.getCnpj(),
-                usuario.getTipoUsuario(),
-                usuario.getProvider()
-        );
+        return new AuthResponseDTO(token, UsuarioResponseDTO.from(usuario));
+    }
 
-        return new AuthResponseDTO(token, usuarioResponse);
+    // ===================== Normalização dos campos opcionais =====================
+
+    private static String textoOuNulo(String valor) {
+        if (valor == null) return null;
+        String limpo = valor.trim();
+        return limpo.isEmpty() ? null : limpo;
+    }
+
+    private static String semArroba(String usuarioRedeSocial) {
+        String limpo = textoOuNulo(usuarioRedeSocial);
+        if (limpo == null) return null;
+        return textoOuNulo(limpo.replaceFirst("^@+", ""));
+    }
+
+    private static String comProtocolo(String url) {
+        String limpo = textoOuNulo(url);
+        if (limpo == null) return null;
+        return limpo.matches("(?i)^https?://.*") ? limpo : "https://" + limpo;
+    }
+
+    private static String apenasDigitos(String valor) {
+        return valor == null ? null : valor.replaceAll("\\D", "");
     }
 }

@@ -28,15 +28,10 @@ public class AuthController {
         return ResponseEntity.status(HttpStatus.CREATED).body(resposta);
     }
 
-    @PostMapping("/login/ong")
-    public ResponseEntity<AuthResponseDTO> loginOng(@Valid @RequestBody LoginDTO dto) {
-        AuthResponseDTO resposta = authService.loginOng(dto);
-        return ResponseEntity.ok(resposta);
-    }
-
-    @PostMapping("/login/user")
-    public ResponseEntity<AuthResponseDTO> loginUsuario(@Valid @RequestBody LoginDTO dto) {
-        AuthResponseDTO resposta = authService.loginUsuarioComum(dto);
+    /** Rota única de login — vale para ONG e usuário comum; o tipo vem em usuario.tipoUsuario. */
+    @PostMapping("/login")
+    public ResponseEntity<AuthResponseDTO> login(@Valid @RequestBody LoginDTO dto) {
+        AuthResponseDTO resposta = authService.login(dto);
         return ResponseEntity.ok(resposta);
     }
 }
