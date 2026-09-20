@@ -1,5 +1,7 @@
 package com.adocao.api.security;
 
+import com.adocao.api.dto.AuthResponseDTO;
+import com.adocao.api.dto.UsuarioResponseDTO;
 import com.adocao.api.entity.Usuario;
 import com.adocao.api.repository.UsuarioRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -45,15 +47,8 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
 
         String token = jwtService.gerarToken(usuario.getEmail(), claims);
 
-        Map<String, Object> body = new HashMap<>();
-        body.put("token", token);
-        body.put("tipo", "Bearer");
-        body.put("usuario", Map.of(
-                "id", usuario.getId(),
-                "nome", usuario.getNome(),
-                "email", usuario.getEmail(),
-                "tipoUsuario", usuario.getTipoUsuario().name()
-        ));
+        // Mesmo payload do login tradicional (POST /api/auth/login)
+        AuthResponseDTO body = new AuthResponseDTO(token, UsuarioResponseDTO.from(usuario));
 
         response.setContentType("application/json;charset=UTF-8");
         response.setStatus(HttpServletResponse.SC_OK);

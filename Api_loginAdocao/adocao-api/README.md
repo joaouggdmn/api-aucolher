@@ -14,7 +14,7 @@ src/main/java/com/adocao/api/
 ├── config/SecurityConfig.java              # Regras do Spring Security, CSRF off, OAuth2 login
 ├── controller/AuthController.java          # Endpoints REST
 ├── dto/                                    # LoginDTO, CadastroOngDTO, CadastroUserDTO, respostas
-├── entity/                                 # Usuario, TipoUsuario, AuthProvider
+├── entity/                                 # Usuario, MembroEquipe, HorarioVisita, TipoUsuario, AuthProvider
 ├── exception/                              # Exceções de negócio + @RestControllerAdvice
 ├── repository/UsuarioRepository.java
 ├── security/
@@ -25,7 +25,7 @@ src/main/java/com/adocao/api/
 │   └── OAuth2AuthenticationSuccessHandler.java  # Devolve JWT em JSON após login Google
 ├── service/AuthService.java                # Regra de negócio, hashing BCrypt, validação de CNPJ
 └── util/CnpjValidator.java                 # Validação de formato + dígitos verificadores do CNPJ
-sql/schema.sql                              # Script de criação do banco + tabela
+sql/schema.sql                              # Script de criação do banco aucolher_db + tabelas
 ```
 
 ## Como rodar
@@ -33,10 +33,10 @@ sql/schema.sql                              # Script de criação do banco + tab
 ### 1. Banco de dados
 
 ```bash
-psql -U postgres -f sql/schema.sql
+psql -U postgres -h localhost -f sql/schema.sql
 ```
 
-Ou deixe o Hibernate criar a tabela automaticamente (já configurado `ddl-auto=update`) — nesse caso o `sql/schema.sql` serve como documentação/referência do schema.
+O script cria o banco `aucolher_db` (se ainda não existir) e as tabelas `usuarios`, `ong_equipe` e `ong_horarios_visita`. É uma cópia de `docs/script_banco_aucolher.sql` do frontend — mantenha os dois iguais. O Hibernate (`ddl-auto=update`) não cria o banco, só as tabelas, então rode o script antes de subir a API.
 
 ### 2. Variáveis de ambiente
 
@@ -68,11 +68,26 @@ Content-Type: application/json
 
 {
   "nome": "ONG Amigos dos Animais",
-  "email": "contato@amigosdosanimais.org",
+  "email": "amigosdosanimais@gmail.com",
   "senha": "senhaSegura123",
-  "cnpj": "12.345.678/0001-95"
+  "cnpj": "12.345.678/0001-95",
+  "cep": "88900-000",
+  "logradouro": "Rua Caetano Lummertz",
+  "numero": "1250",
+  "complemento": null,
+  "bairro": "Centro",
+  "cidade": "Araranguá",
+  "estado": "SC",
+  "fotoUrl": null,
+  "bio": "Resgatamos e encontramos lares para cães e gatos.",
+  "emailInstitucional": "contato@amigosdosanimais.org",
+  "instagram": "amigosdosanimais",
+  "twitter": "amigosanimais",
+  "facebook": "https://facebook.com/amigosdosanimais"
 }
 ```
+
+Endereço é obrigatório; `fotoUrl`, `bio`, `emailInstitucional` e redes sociais são opcionais. CNPJ e CEP podem vir com ou sem máscara (são gravados só com dígitos) e Instagram/X com ou sem `@`.
 
 ### Cadastro de Usuário Comum
 ```
@@ -82,25 +97,20 @@ Content-Type: application/json
 {
   "nome": "Maria Silva",
   "email": "maria@email.com",
-  "senha": "senhaSegura123"
+  "senha": "senhaSegura123",
+  "fotoUrl": null
 }
 ```
 
-### Login de ONG
+### Login (ONG e Usuário Comum)
 ```
-POST /api/auth/login/ong
-Content-Type: application/json
-
-{ "email": "contato@amigosdosanimais.org", "senha": "senhaSegura123" }
-```
-
-### Login de Usuário Comum
-```
-POST /api/auth/login/user
+POST /api/auth/login
 Content-Type: application/json
 
 { "email": "maria@email.com", "senha": "senhaSegura123" }
 ```
+
+Rota única para qualquer tipo de conta: o tipo vem em `usuario.tipoUsuario` na resposta.
 
 Todas as respostas de autenticação seguem o formato:
 
@@ -112,9 +122,23 @@ Todas as respostas de autenticação seguem o formato:
     "id": 1,
     "nome": "Maria Silva",
     "email": "maria@email.com",
-    "cnpj": null,
     "tipoUsuario": "USUARIO_COMUM",
-    "provider": "LOCAL"
+    "provider": "LOCAL",
+    "fotoUrl": null,
+    "bio": null,
+    "cnpj": null,
+    "emailInstitucional": null,
+    "isVerificado": false,
+    "instagram": null,
+    "twitter": null,
+    "facebook": null,
+    "cep": null,
+    "logradouro": null,
+    "numero": null,
+    "complemento": null,
+    "bairro": null,
+    "cidade": null,
+    "estado": null
   }
 }
 ```
@@ -130,6 +154,6 @@ Redirecione o usuário para essa URL no navegador. Após o consentimento, o Spri
 ## Decisões de projeto
 
 - **JWT stateless**: como o requisito pede desativação de CSRF e uma API REST pura, optei por sessão stateless com JWT em vez de sessão HTTP tradicional — é o padrão de mercado para esse tipo de API e evita problemas de CORS/cookies com clientes SPA/mobile.
-- **Senha nula para contas OAuth2**: usuários criados via Google não têm senha própria; o login tradicional (`/login/user`, `/login/ong`) rejeita essas contas com uma mensagem explicativa.
+- **Senha nula para contas OAuth2**: usuários criados via Google não têm senha própria; o login tradicional (`/login`) rejeita essas contas com uma mensagem explicativa.
 - **CNPJ validado com dígito verificador real** (não apenas regex de formato), em `CnpjValidator`.
 - **Constraints de banco** (`CHECK`) reforçam no schema.sql as mesmas regras já validadas na aplicação (ONG exige CNPJ; contas LOCAL exigem senha) como camada extra de integridade.
