@@ -14,6 +14,7 @@ src/main/java/com/adocao/api/
 ├── config/SecurityConfig.java              # Regras do Spring Security, CSRF off, OAuth2 login
 ├── controller/AuthController.java          # Endpoints REST
 ├── dto/                                    # LoginDTO, CadastroOngDTO, CadastroUserDTO, respostas
+│                                           # (os records normalizam os campos no construtor compacto)
 ├── entity/                                 # Usuario, MembroEquipe, HorarioVisita, TipoUsuario, AuthProvider
 ├── exception/                              # Exceções de negócio + @RestControllerAdvice
 ├── repository/UsuarioRepository.java
@@ -23,8 +24,7 @@ src/main/java/com/adocao/api/
 │   ├── CustomUserDetailsService.java
 │   ├── CustomOAuth2UserService.java        # Cria o usuário automaticamente no 1º login Google
 │   └── OAuth2AuthenticationSuccessHandler.java  # Devolve JWT em JSON após login Google
-├── service/AuthService.java                # Regra de negócio, hashing BCrypt, validação de CNPJ
-└── util/CnpjValidator.java                 # Validação de formato + dígitos verificadores do CNPJ
+└── service/AuthService.java                # Regra de negócio e hashing BCrypt
 sql/schema.sql                              # Script de criação do banco aucolher_db + tabelas
 ```
 
@@ -46,8 +46,11 @@ O script cria o banco `aucolher_db` (se ainda não existir) e as tabelas `usuari
 | `DB_PASSWORD`         | Senha do PostgreSQL                          | `postgres`              |
 | `GOOGLE_CLIENT_ID`    | Client ID do Google OAuth2                   | —                       |
 | `GOOGLE_CLIENT_SECRET`| Client Secret do Google OAuth2               | —                       |
-| `JWT_SECRET`          | Chave usada para assinar os tokens JWT       | valor de exemplo no properties |
+| `JWT_SECRET`          | Chave HMAC dos tokens JWT (mínimo 32 caracteres) | — (sem padrão versionado) |
 | `JWT_EXPIRATION_MS`   | Validade do token em milissegundos           | `86400000` (24h)        |
+| `CORS_ALLOWED_ORIGINS`| Origens liberadas no CORS (separadas por vírgula) | `http://localhost:5173` |
+
+Sem `JWT_SECRET`, a API sobe gerando uma chave aleatória por execução (registra um WARN no log): dá para desenvolver, mas todo restart invalida os tokens já emitidos. Defina a variável em qualquer ambiente que não seja a sua máquina.
 
 Para o login Google funcionar, crie as credenciais em [Google Cloud Console](https://console.cloud.google.com/apis/credentials) com **Authorized redirect URI**: `http://localhost:8080/login/oauth2/code/google`.
 
@@ -112,6 +115,20 @@ Content-Type: application/json
 
 Rota única para qualquer tipo de conta: o tipo vem em `usuario.tipoUsuario` na resposta.
 
+### Formato dos erros
+
+Todos os erros seguem o mesmo formato. `mensagem` já vem pronta para exibir; `erros` só aparece em falhas de validação, com o motivo de cada campo:
+
+```json
+{
+  "timestamp": "2026-09-20T18:14:01.173",
+  "status": 400,
+  "erro": "Dados inválidos",
+  "mensagem": "CNPJ inválido",
+  "erros": { "cnpj": "CNPJ inválido", "cep": "CEP em formato inválido" }
+}
+```
+
 Todas as respostas de autenticação seguem o formato:
 
 ```json
@@ -155,5 +172,8 @@ Redirecione o usuário para essa URL no navegador. Após o consentimento, o Spri
 
 - **JWT stateless**: como o requisito pede desativação de CSRF e uma API REST pura, optei por sessão stateless com JWT em vez de sessão HTTP tradicional — é o padrão de mercado para esse tipo de API e evita problemas de CORS/cookies com clientes SPA/mobile.
 - **Senha nula para contas OAuth2**: usuários criados via Google não têm senha própria; o login tradicional (`/login`) rejeita essas contas com uma mensagem explicativa.
-- **CNPJ validado com dígito verificador real** (não apenas regex de formato), em `CnpjValidator`.
+- **Normalização nos DTOs**: os construtores compactos dos records limpam os campos (trim, vazio vira null, CNPJ/CEP só com dígitos, rede social sem `@`, link com protocolo) antes da validação. A Service recebe dados já canônicos e cuida só da regra de negócio.
+- **CNPJ pelo Bean Validation**: `@CNPJ` do Hibernate Validator confere os dígitos verificadores; um `@Pattern` extra barra sequências repetidas (`00.000.000/0000-00`), que o `@CNPJ` sozinho aceita.
+- **JWT mínimo**: o token carrega apenas o e-mail (subject) e a validade. Papel e id não viram claim para não circular desatualizados — quem responde por eles é o banco, relido a cada requisição autenticada.
+- **`ddl-auto=validate`**: o schema vem do `sql/schema.sql`; o Hibernate só confere se o banco bate com as entidades, em vez de alterar tabelas sozinho.
 - **Constraints de banco** (`CHECK`) reforçam no schema.sql as mesmas regras já validadas na aplicação (ONG exige CNPJ; contas LOCAL exigem senha) como camada extra de integridade.

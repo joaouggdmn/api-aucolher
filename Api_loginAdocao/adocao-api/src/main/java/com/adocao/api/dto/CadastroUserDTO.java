@@ -10,6 +10,7 @@ public record CadastroUserDTO(
 
         @NotBlank(message = "O e-mail é obrigatório")
         @Email(message = "E-mail em formato inválido")
+        @Size(max = 150, message = "O e-mail deve ter no máximo 150 caracteres")
         String email,
 
         @NotBlank(message = "A senha é obrigatória")
@@ -19,4 +20,11 @@ public record CadastroUserDTO(
         @Size(max = FotoUrl.TAMANHO_MAXIMO, message = "A foto é grande demais")
         @Pattern(regexp = FotoUrl.FORMATO, message = "Foto em formato inválido")
         String fotoUrl
-) {}
+) {
+
+    public CadastroUserDTO {
+        nome = Sanitizador.texto(nome);
+        email = Sanitizador.texto(email);
+        fotoUrl = Sanitizador.texto(fotoUrl);
+    }
+}

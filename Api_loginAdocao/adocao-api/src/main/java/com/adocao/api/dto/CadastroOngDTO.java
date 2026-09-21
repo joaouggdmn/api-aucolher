@@ -1,7 +1,13 @@
 package com.adocao.api.dto;
 
 import jakarta.validation.constraints.*;
+import org.hibernate.validator.constraints.br.CNPJ;
 
+/**
+ * Cadastro de ONG. O construtor compacto normaliza os campos (ver
+ * {@link Sanitizador}), então as validações abaixo só precisam checar o
+ * formato canônico — CNPJ e CEP já chegam aqui apenas com dígitos.
+ */
 public record CadastroOngDTO(
 
         @NotBlank(message = "O nome é obrigatório")
@@ -10,6 +16,7 @@ public record CadastroOngDTO(
 
         @NotBlank(message = "O e-mail é obrigatório")
         @Email(message = "E-mail em formato inválido")
+        @Size(max = 150, message = "O e-mail deve ter no máximo 150 caracteres")
         String email,
 
         @NotBlank(message = "A senha é obrigatória")
@@ -17,10 +24,10 @@ public record CadastroOngDTO(
         String senha,
 
         @NotBlank(message = "O CNPJ é obrigatório")
-        @Pattern(
-                regexp = "^\\d{2}\\.?\\d{3}\\.?\\d{3}/?\\d{4}-?\\d{2}$",
-                message = "CNPJ em formato inválido"
-        )
+        // @CNPJ confere os dígitos verificadores, mas dá como válida qualquer
+        // sequência de dígitos repetidos (00.000.000/0000-00 passa) — o lookahead barra isso
+        @Pattern(regexp = "^(?!(\\d)\\1{13}$).*$", message = "CNPJ inválido")
+        @CNPJ(message = "CNPJ inválido")
         String cnpj,
 
         // ===================== Opcionais =====================
@@ -36,15 +43,15 @@ public record CadastroOngDTO(
         @Size(max = 150, message = "O e-mail institucional deve ter no máximo 150 caracteres")
         String emailInstitucional,
 
-        @Pattern(regexp = "^@?[A-Za-z0-9._]{0,30}$", message = "Usuário do Instagram inválido")
+        @Pattern(regexp = "^[A-Za-z0-9._]{1,30}$", message = "Usuário do Instagram inválido")
         String instagram,
 
-        @Pattern(regexp = "^@?[A-Za-z0-9_]{0,15}$", message = "Usuário do X (Twitter) inválido")
+        @Pattern(regexp = "^[A-Za-z0-9_]{1,15}$", message = "Usuário do X (Twitter) inválido")
         String twitter,
 
         @Size(max = 255, message = "O link do Facebook deve ter no máximo 255 caracteres")
         @Pattern(
-                regexp = "^(https?://)?([\\w-]+\\.)*(facebook|fb)\\.com/.+$",
+                regexp = "^https?://([\\w-]+\\.)*(facebook|fb)\\.com/.+$",
                 message = "Informe o link da página no Facebook"
         )
         String facebook,
@@ -52,7 +59,7 @@ public record CadastroOngDTO(
         // ===================== Endereço (obrigatório para ONG) =====================
 
         @NotBlank(message = "O CEP é obrigatório")
-        @Pattern(regexp = "^\\d{5}-?\\d{3}$", message = "CEP em formato inválido")
+        @Pattern(regexp = "^\\d{8}$", message = "CEP em formato inválido")
         String cep,
 
         @NotBlank(message = "O logradouro é obrigatório")
@@ -75,6 +82,27 @@ public record CadastroOngDTO(
         String cidade,
 
         @NotBlank(message = "O estado é obrigatório")
-        @Pattern(regexp = "^[A-Za-z]{2}$", message = "Estado deve ser a sigla da UF (ex: SC)")
+        @Pattern(regexp = "^[A-Z]{2}$", message = "Estado deve ser a sigla da UF (ex: SC)")
         String estado
-) {}
+) {
+
+    public CadastroOngDTO {
+        nome = Sanitizador.texto(nome);
+        email = Sanitizador.texto(email);
+        cnpj = Sanitizador.apenasDigitos(cnpj);
+        fotoUrl = Sanitizador.texto(fotoUrl);
+        bio = Sanitizador.texto(bio);
+        emailInstitucional = Sanitizador.texto(emailInstitucional);
+        instagram = Sanitizador.semArroba(instagram);
+        twitter = Sanitizador.semArroba(twitter);
+        facebook = Sanitizador.comProtocolo(facebook);
+        cep = Sanitizador.apenasDigitos(cep);
+        logradouro = Sanitizador.texto(logradouro);
+        numero = Sanitizador.texto(numero);
+        complemento = Sanitizador.texto(complemento);
+        bairro = Sanitizador.texto(bairro);
+        cidade = Sanitizador.texto(cidade);
+        estado = Sanitizador.sigla(estado);
+        // senha não passa por trim: espaços podem fazer parte dela
+    }
+}
