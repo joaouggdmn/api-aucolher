@@ -15,8 +15,6 @@ import org.springframework.security.web.authentication.AuthenticationSuccessHand
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
 
 /**
  * Após o login Google ser concluído, gera um JWT próprio da API
@@ -41,11 +39,7 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
         Usuario usuario = usuarioRepository.findByEmail(email)
                 .orElseThrow(() -> new IllegalStateException("Usuário OAuth2 não encontrado após login"));
 
-        Map<String, Object> claims = new HashMap<>();
-        claims.put("id", usuario.getId());
-        claims.put("tipoUsuario", usuario.getTipoUsuario().name());
-
-        String token = jwtService.gerarToken(usuario.getEmail(), claims);
+        String token = jwtService.gerarToken(usuario.getEmail());
 
         // Mesmo payload do login tradicional (POST /api/auth/login)
         AuthResponseDTO body = new AuthResponseDTO(token, UsuarioResponseDTO.from(usuario));

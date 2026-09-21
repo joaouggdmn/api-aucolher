@@ -3,41 +3,68 @@ package com.adocao.api.security;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
+import java.nio.charset.StandardCharsets;
 import java.util.Date;
-import java.util.Map;
 import java.util.function.Function;
 
 /**
- * Geração e validação de tokens JWT usados pelos endpoints de login
- * (tradicional e OAuth2) para autenticar requisições subsequentes.
+ * Geração e validação dos tokens JWT usados pelos logins (tradicional e OAuth2).
+ *
+ * O token carrega apenas o e-mail (subject) e a validade. Papel e id não entram
+ * como claims: o token é assinado, mas não é revalidado contra o banco a cada
+ * uso, então um papel copiado para dentro dele ficaria desatualizado depois de
+ * qualquer mudança na conta. Quem responde por isso é o CustomUserDetailsService,
+ * que relê o usuário do banco em cada requisição autenticada.
  */
 @Component
 public class JwtService {
 
-    @Value("${app.jwt.secret}")
-    private String secret;
+    private static final Logger log = LoggerFactory.getLogger(JwtService.class);
 
-    @Value("${app.jwt.expiration-ms}")
-    private long expirationMs;
+    /** HS256 exige pelo menos 256 bits de chave. */
+    private static final int TAMANHO_MINIMO_DO_SEGREDO = 32;
 
-    private SecretKey getSigningKey() {
-        return Keys.hmacShaKeyFor(secret.getBytes());
+    private final SecretKey chave;
+    private final long expirationMs;
+
+    public JwtService(@Value("${app.jwt.secret:}") String secret,
+                      @Value("${app.jwt.expiration-ms}") long expirationMs) {
+        this.chave = construirChave(secret);
+        this.expirationMs = expirationMs;
     }
 
-    public String gerarToken(String email, Map<String, Object> claims) {
+    private static SecretKey construirChave(String secret) {
+        if (secret == null || secret.isBlank()) {
+            log.warn("JWT_SECRET não definido: gerando uma chave aleatória válida só para esta execução. " +
+                    "Os tokens emitidos param de valer quando a API reinicia — defina JWT_SECRET no ambiente.");
+            return Jwts.SIG.HS256.key().build();
+        }
+
+        byte[] bytes = secret.getBytes(StandardCharsets.UTF_8);
+
+        if (bytes.length < TAMANHO_MINIMO_DO_SEGREDO) {
+            throw new IllegalStateException(
+                    "app.jwt.secret precisa ter no mínimo " + TAMANHO_MINIMO_DO_SEGREDO + " caracteres");
+        }
+
+        return Keys.hmacShaKeyFor(bytes);
+    }
+
+    public String gerarToken(String email) {
         Date agora = new Date();
         Date expiracao = new Date(agora.getTime() + expirationMs);
 
         return Jwts.builder()
-                .claims(claims)
                 .subject(email)
                 .issuedAt(agora)
                 .expiration(expiracao)
-                .signWith(getSigningKey())
+                .signWith(chave)
                 .compact();
     }
 
@@ -61,7 +88,7 @@ public class JwtService {
 
     private Claims extrairTodasClaims(String token) {
         return Jwts.parser()
-                .verifyWith(getSigningKey())
+                .verifyWith(chave)
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();

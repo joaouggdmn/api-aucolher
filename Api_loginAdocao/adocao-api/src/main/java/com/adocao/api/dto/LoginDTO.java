@@ -11,4 +11,10 @@ public record LoginDTO(
 
         @NotBlank(message = "A senha é obrigatória")
         String senha
-) {}
+) {
+
+    public LoginDTO {
+        // Autocompletar do navegador costuma trazer espaço no fim do e-mail
+        email = Sanitizador.texto(email);
+    }
+}
