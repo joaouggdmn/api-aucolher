@@ -56,6 +56,9 @@ public record CadastroOngDTO(
         )
         String facebook,
 
+        @AnoFundacao
+        Integer anoFundacao,
+
         // ===================== Endereço (obrigatório para ONG) =====================
 
         @NotBlank(message = "O CEP é obrigatório")
