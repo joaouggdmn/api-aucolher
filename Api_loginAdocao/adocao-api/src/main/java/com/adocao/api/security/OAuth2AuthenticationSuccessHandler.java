@@ -2,8 +2,7 @@ package com.adocao.api.security;
 
 import com.adocao.api.dto.AuthResponseDTO;
 import com.adocao.api.dto.UsuarioResponseDTO;
-import com.adocao.api.entity.Usuario;
-import com.adocao.api.repository.UsuarioRepository;
+import com.adocao.api.service.UsuarioService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -25,9 +24,11 @@ import java.io.IOException;
 @RequiredArgsConstructor
 public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccessHandler {
 
-    private final UsuarioRepository usuarioRepository;
+    private final UsuarioService usuarioService;
     private final JwtService jwtService;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    // O ObjectMapper do Spring já vem com o módulo de datas do Java 8 — um
+    // new ObjectMapper() puro falha ao serializar o dataCriacao (LocalDateTime)
+    private final ObjectMapper objectMapper;
 
     @Override
     public void onAuthenticationSuccess(HttpServletRequest request, HttpServletResponse response,
@@ -36,13 +37,13 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
         OAuth2User oAuth2User = (OAuth2User) authentication.getPrincipal();
         String email = oAuth2User.getAttribute("email");
 
-        Usuario usuario = usuarioRepository.findByEmail(email)
-                .orElseThrow(() -> new IllegalStateException("Usuário OAuth2 não encontrado após login"));
+        // O CustomOAuth2UserService já criou a conta no primeiro acesso
+        UsuarioResponseDTO usuario = usuarioService.buscarPerfil(email);
 
-        String token = jwtService.gerarToken(usuario.getEmail());
+        String token = jwtService.gerarToken(usuario.email());
 
         // Mesmo payload do login tradicional (POST /api/auth/login)
-        AuthResponseDTO body = new AuthResponseDTO(token, UsuarioResponseDTO.from(usuario));
+        AuthResponseDTO body = new AuthResponseDTO(token, usuario);
 
         response.setContentType("application/json;charset=UTF-8");
         response.setStatus(HttpServletResponse.SC_OK);

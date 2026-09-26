@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
     instagram            VARCHAR(30),
     twitter              VARCHAR(15),
     facebook             VARCHAR(255),
+    ano_fundacao         INTEGER,
 
     -- Endereço (obrigatório para ONG, validado na API)
     cep                  VARCHAR(8),
@@ -72,6 +73,15 @@ CREATE TABLE IF NOT EXISTS usuarios (
     CONSTRAINT chk_usuarios_local_possui_senha CHECK (provider <> 'LOCAL' OR senha IS NOT NULL)
 );
 
+-- Colunas que chegaram depois da primeira versão do script. Em um banco já
+-- criado, o CREATE TABLE IF NOT EXISTS acima não faz nada — os ALTER abaixo
+-- acrescentam o que falta (sem isso a API não sobe: ddl-auto=validate).
+-- São idempotentes: rodar o script de novo não quebra nada.
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS ano_fundacao INTEGER;
+ALTER TABLE usuarios DROP CONSTRAINT IF EXISTS chk_usuarios_ano_fundacao;
+ALTER TABLE usuarios ADD CONSTRAINT chk_usuarios_ano_fundacao
+    CHECK (ano_fundacao IS NULL OR (tipo_usuario = 'ONG' AND ano_fundacao >= 1800));
+
 CREATE INDEX IF NOT EXISTS idx_usuarios_tipo_usuario ON usuarios (tipo_usuario);
 
 COMMENT ON TABLE  usuarios                     IS 'Usuários da plataforma: ONGs/abrigos e usuários comuns';
@@ -84,6 +94,7 @@ COMMENT ON COLUMN usuarios.is_verificado       IS 'Selo de ONG verificada, conce
 COMMENT ON COLUMN usuarios.instagram           IS 'Nome de usuário, sem @';
 COMMENT ON COLUMN usuarios.twitter             IS 'Nome de usuário do X/Twitter, sem @';
 COMMENT ON COLUMN usuarios.facebook            IS 'Link completo da página';
+COMMENT ON COLUMN usuarios.ano_fundacao        IS 'Ano de fundação da ONG (opcional) — "Fundada em [ano]" no perfil; nulo para usuário comum';
 COMMENT ON COLUMN usuarios.cep                 IS 'Apenas os 8 dígitos';
 COMMENT ON COLUMN usuarios.estado              IS 'Sigla da UF, ex: SC';
 

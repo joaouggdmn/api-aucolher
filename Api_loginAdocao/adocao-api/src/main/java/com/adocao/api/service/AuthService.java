@@ -50,6 +50,7 @@ public class AuthService {
                 .instagram(dto.instagram())
                 .twitter(dto.twitter())
                 .facebook(dto.facebook())
+                .anoFundacao(dto.anoFundacao())
                 .cep(dto.cep())
                 .logradouro(dto.logradouro())
                 .numero(dto.numero())
