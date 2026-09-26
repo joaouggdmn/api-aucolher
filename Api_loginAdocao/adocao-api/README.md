@@ -12,8 +12,9 @@ Java 17 · Spring Boot 3.3 · Spring Security · Spring Security OAuth2 Client �
 src/main/java/com/adocao/api/
 ├── AdocaoApiApplication.java
 ├── config/SecurityConfig.java              # Regras do Spring Security, CSRF off, OAuth2 login
-├── controller/AuthController.java          # Endpoints REST
-├── dto/                                    # LoginDTO, CadastroOngDTO, CadastroUserDTO, respostas
+├── controller/AuthController.java          # Cadastro e login
+├── controller/UsuarioController.java       # Edição do perfil da própria conta
+├── dto/                                    # LoginDTO, CadastroOngDTO, CadastroUserDTO, AtualizacaoPerfilDTO, respostas
 │                                           # (os records normalizam os campos no construtor compacto)
 ├── entity/                                 # Usuario, MembroEquipe, HorarioVisita, TipoUsuario, AuthProvider
 ├── exception/                              # Exceções de negócio + @RestControllerAdvice
@@ -24,7 +25,8 @@ src/main/java/com/adocao/api/
 │   ├── CustomUserDetailsService.java
 │   ├── CustomOAuth2UserService.java        # Cria o usuário automaticamente no 1º login Google
 │   └── OAuth2AuthenticationSuccessHandler.java  # Devolve JWT em JSON após login Google
-└── service/AuthService.java                # Regra de negócio e hashing BCrypt
+├── service/AuthService.java                # Regra de negócio e hashing BCrypt
+└── service/UsuarioService.java             # Edição do perfil ("Minha conta")
 sql/schema.sql                              # Script de criação do banco aucolher_db + tabelas
 ```
 
@@ -36,7 +38,7 @@ sql/schema.sql                              # Script de criação do banco aucol
 psql -U postgres -h localhost -f sql/schema.sql
 ```
 
-O script cria o banco `aucolher_db` (se ainda não existir) e as tabelas `usuarios`, `ong_equipe` e `ong_horarios_visita`. É uma cópia de `docs/script_banco_aucolher.sql` do frontend — mantenha os dois iguais. O Hibernate (`ddl-auto=update`) não cria o banco, só as tabelas, então rode o script antes de subir a API.
+O script cria o banco `aucolher_db` (se ainda não existir) e as tabelas `usuarios`, `ong_equipe` e `ong_horarios_visita`. Banco criado por uma versão anterior do script? Rode-o de novo: os `ALTER TABLE ... IF NOT EXISTS` logo depois do `CREATE TABLE usuarios` acrescentam as colunas novas (ex: `ano_fundacao`) — sem elas a API não sobe, por causa do `ddl-auto=validate`. É uma cópia de `docs/script_banco_aucolher.sql` do frontend — mantenha os dois iguais. O Hibernate (`ddl-auto=update`) não cria o banco, só as tabelas, então rode o script antes de subir a API.
 
 ### 2. Variáveis de ambiente
 
@@ -86,11 +88,12 @@ Content-Type: application/json
   "emailInstitucional": "contato@amigosdosanimais.org",
   "instagram": "amigosdosanimais",
   "twitter": "amigosanimais",
-  "facebook": "https://facebook.com/amigosdosanimais"
+  "facebook": "https://facebook.com/amigosdosanimais",
+  "anoFundacao": 2016
 }
 ```
 
-Endereço é obrigatório; `fotoUrl`, `bio`, `emailInstitucional` e redes sociais são opcionais. CNPJ e CEP podem vir com ou sem máscara (são gravados só com dígitos) e Instagram/X com ou sem `@`.
+Endereço é obrigatório; `fotoUrl`, `bio`, `emailInstitucional`, redes sociais e `anoFundacao` são opcionais. `anoFundacao` precisa estar entre 1800 e o ano atual. CNPJ e CEP podem vir com ou sem máscara (são gravados só com dígitos) e Instagram/X com ou sem `@`.
 
 ### Cadastro de Usuário Comum
 ```
@@ -141,6 +144,7 @@ Todas as respostas de autenticação seguem o formato:
     "email": "maria@email.com",
     "tipoUsuario": "USUARIO_COMUM",
     "provider": "LOCAL",
+    "dataCriacao": "2026-09-20T18:14:01.173",
     "fotoUrl": null,
     "bio": null,
     "cnpj": null,
@@ -149,6 +153,9 @@ Todas as respostas de autenticação seguem o formato:
     "instagram": null,
     "twitter": null,
     "facebook": null,
+    "anoFundacao": null,
+    "equipe": [],
+    "horariosVisita": [],
     "cep": null,
     "logradouro": null,
     "numero": null,
@@ -161,6 +168,35 @@ Todas as respostas de autenticação seguem o formato:
 ```
 
 Use o token nas requisições autenticadas: `Authorization: Bearer {token}`.
+
+### Edição do perfil ("Minha conta")
+```
+PUT /api/usuarios/me
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "nome": "ONG Amigos dos Animais",
+  "fotoUrl": null,
+  "bio": "Resgatamos e encontramos lares para cães e gatos.",
+  "emailInstitucional": "contato@amigosdosanimais.org",
+  "instagram": "amigosdosanimais",
+  "twitter": null,
+  "facebook": "https://facebook.com/amigosdosanimais",
+  "anoFundacao": 2016,
+  "equipe": [{ "nome": "Marina Costa", "funcao": "Presidente" }],
+  "horariosVisita": [{ "dias": "Terça a sexta", "horario": "14h às 18h" }],
+  "cep": "88900-000",
+  "logradouro": "Rua Caetano Lummertz",
+  "numero": "1250",
+  "complemento": "Galpão B",
+  "bairro": "Centro",
+  "cidade": "Araranguá",
+  "estado": "SC"
+}
+```
+
+A conta editada é sempre a do token — não há id na rota. É uma substituição completa: campo opcional que não vier é apagado, e `equipe`/`horariosVisita` substituem as listas inteiras (na ordem enviada). Usuário comum grava só `nome`, `fotoUrl`, `bio`, `cep`, `cidade` e `estado`; o resto é ignorado. Para ONG o endereço continua obrigatório. E-mail, senha e CNPJ não mudam por aqui. Responde com o mesmo objeto `usuario` das rotas de autenticação — que também traz `equipe` e `horariosVisita`, para o frontend não depender de nada guardado no navegador.
 
 ### Login via Google (OAuth2)
 ```

@@ -5,9 +5,16 @@ import com.adocao.api.entity.TipoUsuario;
 import com.adocao.api.entity.Usuario;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+import java.time.LocalDateTime;
+import java.util.List;
+
 /**
  * Usuário devolvido em todas as respostas de autenticação (login,
- * cadastro e OAuth2). Campos de ONG/endereço vêm nulos quando não se aplicam.
+ * cadastro e OAuth2) e na edição do perfil. Campos de ONG/endereço vêm
+ * nulos (e as listas vazias) quando não se aplicam.
+ *
+ * Equipe e horários são coleções lazy: monte este DTO dentro de uma
+ * transação (open-in-view está desligado).
  */
 public record UsuarioResponseDTO(
         Long id,
@@ -15,6 +22,7 @@ public record UsuarioResponseDTO(
         String email,
         TipoUsuario tipoUsuario,
         AuthProvider provider,
+        LocalDateTime dataCriacao, // base do "Membro desde [ano]" no perfil
         String fotoUrl,
         String bio,
 
@@ -25,6 +33,9 @@ public record UsuarioResponseDTO(
         String instagram,
         String twitter,
         String facebook,
+        Integer anoFundacao,
+        List<MembroEquipeDTO> equipe,
+        List<HorarioVisitaDTO> horariosVisita,
 
         // Endereço
         String cep,
@@ -43,6 +54,7 @@ public record UsuarioResponseDTO(
                 usuario.getEmail(),
                 usuario.getTipoUsuario(),
                 usuario.getProvider(),
+                usuario.getDataCriacao(),
                 usuario.getFotoUrl(),
                 usuario.getBio(),
                 usuario.getCnpj(),
@@ -51,6 +63,9 @@ public record UsuarioResponseDTO(
                 usuario.getInstagram(),
                 usuario.getTwitter(),
                 usuario.getFacebook(),
+                usuario.getAnoFundacao(),
+                usuario.getEquipe().stream().map(MembroEquipeDTO::from).toList(),
+                usuario.getHorariosVisita().stream().map(HorarioVisitaDTO::from).toList(),
                 usuario.getCep(),
                 usuario.getLogradouro(),
                 usuario.getNumero(),

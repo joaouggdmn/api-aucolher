@@ -99,6 +99,10 @@ public class Usuario {
     @Column(length = 255)
     private String facebook;
 
+    /** Opcional — exibido no perfil como "Fundada em [ano]". Sempre nulo para usuário comum. */
+    @Column(name = "ano_fundacao")
+    private Integer anoFundacao;
+
     @ElementCollection
     @CollectionTable(name = "ong_equipe", joinColumns = @JoinColumn(name = "usuario_id"))
     @OrderColumn(name = "ordem")
