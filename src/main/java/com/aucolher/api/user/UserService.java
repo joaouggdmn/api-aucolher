@@ -77,7 +77,7 @@ public class UserService {
         user.setComplement(dto.complement());
         user.setDistrict(dto.district());
 
-        // A ordem da lista vira a coluna "ordem" (@OrderColumn)
+        // A ordem da lista vira a coluna "sort_order" (@OrderColumn)
         user.getTeam().clear();
         dto.team().forEach(member -> user.getTeam().add(new TeamMember(member.name(), member.role())));
 

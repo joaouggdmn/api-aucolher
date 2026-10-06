@@ -1,5 +1,6 @@
 package com.aucolher.api.animal;
 
+import com.aucolher.api.animal.entity.AnimalSize;
 import com.aucolher.api.config.SecurityConfig;
 import com.aucolher.api.security.CustomOAuth2UserService;
 import com.aucolher.api.security.CustomUserDetailsService;
@@ -18,6 +19,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -49,74 +51,83 @@ class AnimalControllerTest {
     private OAuth2AuthenticationSuccessHandler oAuth2AuthenticationSuccessHandler;
 
     @Test
-    void listagemEPublica() throws Exception {
-        when(animalService.listarDisponiveis(any(), anyInt(), anyInt()))
+    void listingIsPublic() throws Exception {
+        when(animalService.listAvailable(any(), anyInt(), anyInt()))
                 .thenReturn(new PageDTO<>(List.of(), 0, 12, 0, 0));
 
-        mockMvc.perform(get("/api/animais").param("especie", "GATO"))
+        mockMvc.perform(get("/api/animals").param("species", "CAT"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalElements").value(0));
     }
 
     @Test
-    void animaisDeUmPerfilSaoPublicos() throws Exception {
-        mockMvc.perform(get("/api/usuarios/1/animais")).andExpect(status().isOk());
+    void profileAnimalsArePublic() throws Exception {
+        mockMvc.perform(get("/api/users/1/animals")).andExpect(status().isOk());
     }
 
     @Test
-    void filtroComValorForaDaListaDa400() throws Exception {
-        mockMvc.perform(get("/api/animais").param("especie", "PASSARO"))
+    void sizesFilterDoesNotClashWithPageSize() throws Exception {
+        // `size` é o tamanho da página; o filtro de porte é `sizes`
+        mockMvc.perform(get("/api/animals").param("sizes", "SMALL").param("size", "12"))
+                .andExpect(status().isOk());
+
+        verify(animalService).listAvailable(argThat(filter -> filter.sizes().equals(List.of(AnimalSize.SMALL))), eq(0), eq(12));
+    }
+
+    @Test
+    void filterWithUnknownValueReturns400() throws Exception {
+        mockMvc.perform(get("/api/animals").param("species", "BIRD"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.errors.especie").exists());
+                .andExpect(jsonPath("$.errors.species").exists());
     }
 
     @Test
-    void meusAnimaisExigeLogin() throws Exception {
-        mockMvc.perform(get("/api/animais/meus")).andExpect(status().isUnauthorized());
+    void myAnimalsRequiresLogin() throws Exception {
+        mockMvc.perform(get("/api/animals/mine")).andExpect(status().isUnauthorized());
     }
 
     @Test
-    @WithMockUser(username = "dono@email.com")
-    void meusAnimaisComLogin() throws Exception {
-        mockMvc.perform(get("/api/animais/meus")).andExpect(status().isOk());
+    @WithMockUser(username = "owner@email.com")
+    void myAnimalsWithLogin() throws Exception {
+        mockMvc.perform(get("/api/animals/mine")).andExpect(status().isOk());
     }
 
     @Test
-    void cadastroExigeLogin() throws Exception {
-        mockMvc.perform(post("/api/animais").contentType(MediaType.APPLICATION_JSON).content("{}"))
+    void createRequiresLogin() throws Exception {
+        mockMvc.perform(post("/api/animals").contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isUnauthorized());
     }
 
     @Test
-    @WithMockUser(username = "dono@email.com")
-    void cadastroIncompletoApontaOsCampos() throws Exception {
-        mockMvc.perform(post("/api/animais").contentType(MediaType.APPLICATION_JSON).content("{}"))
+    @WithMockUser(username = "owner@email.com")
+    void incompleteCreatePointsToFields() throws Exception {
+        mockMvc.perform(post("/api/animals").contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.errors.nome").exists())
-                .andExpect(jsonPath("$.errors.especie").exists())
-                .andExpect(jsonPath("$.errors.fotos").value("Envie de 1 a 4 fotos"));
+                .andExpect(jsonPath("$.errors.name").exists())
+                .andExpect(jsonPath("$.errors.species").exists())
+                .andExpect(jsonPath("$.errors.photos").value("Envie de 1 a 4 fotos"));
     }
 
     @Test
-    @WithMockUser(username = "dono@email.com")
-    void idadeForaDaFaixaDaUnidadeDa400() throws Exception {
-        String corpo = """
-                {"nome":"Thor","especie":"CACHORRO","raca":"SRD","sexo":"MACHO",
-                 "idadeValor":14,"idadeUnidade":"MESES","porte":"GRANDE",
-                 "nivelEnergia":"ALTO","temperamento":"CALMO","nivelIndependencia":"BAIXO","nivelVocalizacao":"BAIXO",
-                 "bomComCriancas":true,"bomComCaes":true,"bomComGatos":true,"adaptadoApartamento":true,
-                 "resumo":"Resumo","historia":"História","fotos":["https://fotos/1.jpg"]}
+    @WithMockUser(username = "owner@email.com")
+    void ageOutOfRangeForUnitReturns400() throws Exception {
+        String body = """
+                {"name":"Thor","species":"DOG","breed":"SRD","sex":"MALE",
+                 "ageValue":14,"ageUnit":"MONTHS","size":"LARGE",
+                 "energyLevel":"HIGH","temperament":"CALM","independenceLevel":"LOW","vocalization":"LOW",
+                 "goodWithChildren":true,"goodWithDogs":true,"goodWithCats":true,"apartmentFriendly":true,
+                 "summary":"Resumo","story":"História","photos":["https://fotos/1.jpg"]}
                 """;
 
-        mockMvc.perform(post("/api/animais").contentType(MediaType.APPLICATION_JSON).content(corpo))
+        mockMvc.perform(post("/api/animals").contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.errors.idadeValida").exists());
+                .andExpect(jsonPath("$.errors.ageValid").exists());
     }
 
     @Test
-    void alterarStatusExigeLogin() throws Exception {
-        mockMvc.perform(patch("/api/animais/1/status").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"status\":\"ADOTADO\"}"))
+    void changeStatusRequiresLogin() throws Exception {
+        mockMvc.perform(patch("/api/animals/1/status").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"ADOPTED\"}"))
                 .andExpect(status().isUnauthorized());
     }
 }
