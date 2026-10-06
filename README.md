@@ -8,7 +8,7 @@ Java 17 · Spring Boot 3.3 · Spring Security · Spring Security OAuth2 Client �
 
 ## Estrutura do projeto
 
-O código é organizado **por funcionalidade**: cada parte do sistema tem seu pacote com controller, service, repository, entidades e DTOs juntos. Uma funcionalidade nova (ex: `animal/`, `adocao/`) ganha o seu pacote no mesmo molde; o que é usado por várias delas fica em `shared/`.
+O código é organizado **por funcionalidade**: cada parte do sistema tem seu pacote com controller, service, repository, entidades e DTOs juntos. Uma funcionalidade nova (ex: `adoption/`) ganha o seu pacote no mesmo molde; o que é usado por várias delas fica em `shared/`.
 
 ```
 src/main/java/com/aucolher/api/
@@ -16,29 +16,29 @@ src/main/java/com/aucolher/api/
 ├── auth/                                   # Cadastro e login
 │   ├── AuthController.java
 │   ├── AuthService.java                    # Regra de negócio e hashing BCrypt
-│   └── dto/                                # LoginDTO, CadastroOngDTO, CadastroUserDTO, AuthResponseDTO
-├── usuario/                                # Conta do usuário e perfil ("Minha conta")
-│   ├── UsuarioController.java
-│   ├── UsuarioService.java
-│   ├── UsuarioRepository.java
-│   ├── entity/                             # Usuario, MembroEquipe, HorarioVisita, TipoUsuario, AuthProvider
-│   └── dto/                                # AtualizacaoPerfilDTO, UsuarioResponseDTO, MembroEquipeDTO, HorarioVisitaDTO
+│   └── dto/                                # LoginDTO, NgoRegistrationDTO, PersonRegistrationDTO, AuthResponseDTO
+├── user/                                   # Conta do usuário e perfil ("Minha conta")
+│   ├── UserController.java
+│   ├── UserService.java
+│   ├── UserRepository.java
+│   ├── entity/                             # User, TeamMember, VisitingHour, UserType, AuthProvider
+│   └── dto/                                # ProfileUpdateDTO, UserResponseDTO, TeamMemberDTO, VisitingHourDTO
 ├── animal/                                 # Anúncios de adoção
 │   ├── AnimalController.java
-│   ├── AnimalService.java                  # Regras: só o dono altera, ADOTADO é definitivo, inativo só o dono vê
+│   ├── AnimalService.java                  # Regras: só o dono altera, ADOPTED é definitivo, inativo só o dono vê
 │   ├── AnimalRepository.java
 │   ├── AnimalSpecifications.java           # Monta o WHERE da listagem a partir dos filtros recebidos
-│   ├── entity/                             # Animal + enums (Especie, Porte, Sexo, Nivel, Temperamento, StatusAnimal...)
-│   └── dto/                                # AnimalRequestDTO, AnimalDetalheDTO, AnimalResumoDTO (card), AnimalFiltroDTO...
-├── favorito/                               # Animais favoritados por cada usuário
-│   ├── FavoritoController.java
-│   ├── FavoritoService.java
-│   ├── FavoritoRepository.java
-│   └── entity/Favorito.java
+│   ├── entity/                             # Animal + enums (Species, AnimalSize, Sex, Level, Temperament, AnimalStatus...)
+│   └── dto/                                # AnimalRequestDTO, AnimalDetailDTO, AnimalSummaryDTO (card), AnimalFilterDTO...
+├── favorite/                               # Animais favoritados por cada usuário
+│   ├── FavoriteController.java
+│   ├── FavoriteService.java
+│   ├── FavoriteRepository.java
+│   └── entity/Favorite.java
 ├── shared/                                 # Comum a todas as funcionalidades
-│   ├── dto/PaginaDTO.java                  # Formato padrão das respostas paginadas
-│   ├── exception/                          # Exceções (400, 401, 403, 404), @RestControllerAdvice e ErroResponseDTO
-│   └── validation/                         # Sanitizador (normalização nos records), FotoUrl, @AnoFundacao
+│   ├── dto/PageDTO.java                    # Formato padrão das respostas paginadas
+│   ├── exception/                          # Exceções (400, 401, 403, 404), @RestControllerAdvice e ErrorResponseDTO
+│   └── validation/                         # Sanitizer (normalização nos records), PhotoUrl, @FoundedYear
 ├── config/SecurityConfig.java              # Regras do Spring Security, CSRF off, OAuth2 login
 └── security/
     ├── JwtService.java                     # Geração/validação de token JWT
@@ -47,6 +47,7 @@ src/main/java/com/aucolher/api/
     ├── CustomOAuth2UserService.java        # Cria o usuário automaticamente no 1º login Google
     └── OAuth2AuthenticationSuccessHandler.java  # Devolve JWT em JSON após login Google
 sql/schema.sql                              # Script de criação do banco aucolher_db + tabelas
+sql/migrations/                             # Atualizações para bancos criados por versões anteriores do script
 src/test/java/...                           # Testes (JUnit 5 + Mockito + MockMvc)
 ```
 
@@ -58,7 +59,20 @@ src/test/java/...                           # Testes (JUnit 5 + Mockito + MockMv
 psql -U postgres -h localhost -f sql/schema.sql
 ```
 
-O script cria o banco `aucolher_db` (se ainda não existir) e as tabelas `usuarios`, `ong_equipe`, `ong_horarios_visita`, `animais`, `animal_fotos` e `favoritos`. Todas usam `IF NOT EXISTS`, então rodar o script de novo num banco existente só acrescenta o que falta. Banco criado por uma versão anterior do script? Rode-o de novo: os `ALTER TABLE ... IF NOT EXISTS` logo depois do `CREATE TABLE usuarios` acrescentam as colunas novas (ex: `ano_fundacao`) — sem elas a API não sobe, por causa do `ddl-auto=validate`. É uma cópia de `docs/script_banco_aucolher.sql` do frontend — mantenha os dois iguais. Rode o script antes de subir a API: o Hibernate (`ddl-auto=validate`) não cria o banco nem as tabelas, só confere se elas batem com as entidades.
+O script cria o banco `aucolher_db` (se ainda não existir) e as tabelas `users`, `ngo_team`, `ngo_visiting_hours`, `animals`, `animal_photos` e `favorites`. Todas usam `IF NOT EXISTS`, então rodar o script de novo não apaga nada. É uma cópia de `docs/script_banco_aucolher.sql` do frontend — mantenha os dois iguais. Rode o script antes de subir a API: o Hibernate (`ddl-auto=validate`) não cria o banco nem as tabelas, só confere se elas batem com as entidades.
+
+#### Banco criado antes da padronização em inglês
+
+Se o seu `aucolher_db` ainda tem as tabelas em português (`usuarios`, `animais`, `favoritos`...), **não** rode o `schema.sql`: aplique as migrações, em ordem, uma vez só. Elas renomeiam tabelas, colunas e constraints e traduzem os valores gravados (`ONG` → `NGO`, `CACHORRO` → `DOG`...) sem apagar nenhum dado — as contas e senhas continuam valendo.
+
+```bash
+psql -U postgres -h localhost -d aucolher_db -f sql/migrations/001_users_english.sql
+psql -U postgres -h localhost -d aucolher_db -f sql/migrations/002_animals_english.sql
+```
+
+Cada migração roda numa transação: se algo falhar, o banco fica como estava. Sem elas a API não sobe (erro `Schema-validation: missing table [users]`).
+
+Depois de trazer as mudanças do Git, faça **Build → Rebuild Project** no IntelliJ (ou `mvn clean`): classes antigas compiladas (`Usuario`, `Animal` com campos em português) ficam na pasta `target/` e impedem a API de subir.
 
 ### 2. Variáveis de ambiente
 
@@ -96,43 +110,43 @@ Os testes não precisam de banco: as regras de negócio são testadas com o repo
 
 ### Cadastro de ONG
 ```
-POST /api/auth/register/ong
+POST /api/auth/register/ngo
 Content-Type: application/json
 
 {
-  "nome": "ONG Amigos dos Animais",
+  "name": "ONG Amigos dos Animais",
   "email": "amigosdosanimais@gmail.com",
-  "senha": "senhaSegura123",
+  "password": "senhaSegura123",
   "cnpj": "12.345.678/0001-95",
   "cep": "88900-000",
-  "logradouro": "Rua Caetano Lummertz",
-  "numero": "1250",
-  "complemento": null,
-  "bairro": "Centro",
-  "cidade": "Araranguá",
-  "estado": "SC",
-  "fotoUrl": null,
+  "street": "Rua Caetano Lummertz",
+  "number": "1250",
+  "complement": null,
+  "district": "Centro",
+  "city": "Araranguá",
+  "state": "SC",
+  "photoUrl": null,
   "bio": "Resgatamos e encontramos lares para cães e gatos.",
-  "emailInstitucional": "contato@amigosdosanimais.org",
+  "institutionalEmail": "contato@amigosdosanimais.org",
   "instagram": "amigosdosanimais",
   "twitter": "amigosanimais",
   "facebook": "https://facebook.com/amigosdosanimais",
-  "anoFundacao": 2016
+  "foundedYear": 2016
 }
 ```
 
-Endereço é obrigatório; `fotoUrl`, `bio`, `emailInstitucional`, redes sociais e `anoFundacao` são opcionais. `anoFundacao` precisa estar entre 1800 e o ano atual. CNPJ e CEP podem vir com ou sem máscara (são gravados só com dígitos) e Instagram/X com ou sem `@`.
+Endereço é obrigatório; `photoUrl`, `bio`, `institutionalEmail`, redes sociais e `foundedYear` são opcionais. `foundedYear` precisa estar entre 1800 e o ano atual. CNPJ e CEP podem vir com ou sem máscara (são gravados só com dígitos) e Instagram/X com ou sem `@`.
 
 ### Cadastro de Usuário Comum
 ```
-POST /api/auth/register/user
+POST /api/auth/register/person
 Content-Type: application/json
 
 {
-  "nome": "Maria Silva",
+  "name": "Maria Silva",
   "email": "maria@email.com",
-  "senha": "senhaSegura123",
-  "fotoUrl": null
+  "password": "senhaSegura123",
+  "photoUrl": null
 }
 ```
 
@@ -141,22 +155,22 @@ Content-Type: application/json
 POST /api/auth/login
 Content-Type: application/json
 
-{ "email": "maria@email.com", "senha": "senhaSegura123" }
+{ "email": "maria@email.com", "password": "senhaSegura123" }
 ```
 
-Rota única para qualquer tipo de conta: o tipo vem em `usuario.tipoUsuario` na resposta.
+Rota única para qualquer tipo de conta: o tipo vem em `user.userType` na resposta (`NGO` ou `PERSON`).
 
 ### Formato dos erros
 
-Todos os erros seguem o mesmo formato. `mensagem` já vem pronta para exibir; `erros` só aparece em falhas de validação, com o motivo de cada campo:
+Todos os erros seguem o mesmo formato. `message` já vem pronta para exibir (em português); `errors` só aparece em falhas de validação, com o motivo de cada campo:
 
 ```json
 {
   "timestamp": "2026-09-20T18:14:01.173",
   "status": 400,
-  "erro": "Dados inválidos",
-  "mensagem": "CNPJ inválido",
-  "erros": { "cnpj": "CNPJ inválido", "cep": "CEP em formato inválido" }
+  "error": "Dados inválidos",
+  "message": "CNPJ inválido",
+  "errors": { "cnpj": "CNPJ inválido", "cep": "CEP em formato inválido" }
 }
 ```
 
@@ -165,32 +179,32 @@ Todas as respostas de autenticação seguem o formato:
 ```json
 {
   "token": "eyJhbGciOiJIUzI1NiJ9...",
-  "tipo": "Bearer",
-  "usuario": {
+  "type": "Bearer",
+  "user": {
     "id": 1,
-    "nome": "Maria Silva",
+    "name": "Maria Silva",
     "email": "maria@email.com",
-    "tipoUsuario": "USUARIO_COMUM",
+    "userType": "PERSON",
     "provider": "LOCAL",
-    "dataCriacao": "2026-09-20T18:14:01.173",
-    "fotoUrl": null,
+    "createdAt": "2026-09-20T18:14:01.173",
+    "photoUrl": null,
     "bio": null,
     "cnpj": null,
-    "emailInstitucional": null,
-    "isVerificado": false,
+    "institutionalEmail": null,
+    "isVerified": false,
     "instagram": null,
     "twitter": null,
     "facebook": null,
-    "anoFundacao": null,
-    "equipe": [],
-    "horariosVisita": [],
+    "foundedYear": null,
+    "team": [],
+    "visitingHours": [],
     "cep": null,
-    "logradouro": null,
-    "numero": null,
-    "complemento": null,
-    "bairro": null,
-    "cidade": null,
-    "estado": null
+    "street": null,
+    "number": null,
+    "complement": null,
+    "district": null,
+    "city": null,
+    "state": null
   }
 }
 ```
@@ -199,81 +213,81 @@ Use o token nas requisições autenticadas: `Authorization: Bearer {token}`.
 
 ### Edição do perfil ("Minha conta")
 ```
-PUT /api/usuarios/me
+PUT /api/users/me
 Authorization: Bearer {token}
 Content-Type: application/json
 
 {
-  "nome": "ONG Amigos dos Animais",
-  "fotoUrl": null,
+  "name": "ONG Amigos dos Animais",
+  "photoUrl": null,
   "bio": "Resgatamos e encontramos lares para cães e gatos.",
-  "emailInstitucional": "contato@amigosdosanimais.org",
+  "institutionalEmail": "contato@amigosdosanimais.org",
   "instagram": "amigosdosanimais",
   "twitter": null,
   "facebook": "https://facebook.com/amigosdosanimais",
-  "anoFundacao": 2016,
-  "equipe": [{ "nome": "Marina Costa", "funcao": "Presidente" }],
-  "horariosVisita": [{ "dias": "Terça a sexta", "horario": "14h às 18h" }],
+  "foundedYear": 2016,
+  "team": [{ "name": "Marina Costa", "role": "Presidente" }],
+  "visitingHours": [{ "days": "Terça a sexta", "hours": "14h às 18h" }],
   "cep": "88900-000",
-  "logradouro": "Rua Caetano Lummertz",
-  "numero": "1250",
-  "complemento": "Galpão B",
-  "bairro": "Centro",
-  "cidade": "Araranguá",
-  "estado": "SC"
+  "street": "Rua Caetano Lummertz",
+  "number": "1250",
+  "complement": "Galpão B",
+  "district": "Centro",
+  "city": "Araranguá",
+  "state": "SC"
 }
 ```
 
-A conta editada é sempre a do token — não há id na rota. É uma substituição completa: campo opcional que não vier é apagado, e `equipe`/`horariosVisita` substituem as listas inteiras (na ordem enviada). Usuário comum grava só `nome`, `fotoUrl`, `bio`, `cep`, `cidade` e `estado`; o resto é ignorado. Para ONG o endereço continua obrigatório. E-mail, senha e CNPJ não mudam por aqui. Responde com o mesmo objeto `usuario` das rotas de autenticação — que também traz `equipe` e `horariosVisita`, para o frontend não depender de nada guardado no navegador.
+A conta editada é sempre a do token — não há id na rota. É uma substituição completa: campo opcional que não vier é apagado, e `team`/`visitingHours` substituem as listas inteiras (na ordem enviada). Usuário comum grava só `name`, `photoUrl`, `bio`, `cep`, `city` e `state`; o resto é ignorado. Para ONG o endereço continua obrigatório. E-mail, senha e CNPJ não mudam por aqui. Responde com o mesmo objeto `user` das rotas de autenticação — que também traz `team` e `visitingHours`, para o frontend não depender de nada guardado no navegador.
 
 ### Login via Google (OAuth2)
 ```
 GET /oauth2/authorization/google
 ```
-Redirecione o usuário para essa URL no navegador. Após o consentimento, o Spring Security completa o fluxo OAuth2; no primeiro acesso, `CustomOAuth2UserService` cria automaticamente o registro em `usuarios` com `tipoUsuario = USUARIO_COMUM` e `provider = GOOGLE`. Em seguida, `OAuth2AuthenticationSuccessHandler` devolve o mesmo formato de JSON (token + usuário) dos logins tradicionais.
+Redirecione o usuário para essa URL no navegador. Após o consentimento, o Spring Security completa o fluxo OAuth2; no primeiro acesso, `CustomOAuth2UserService` cria automaticamente o registro em `users` com `userType = PERSON` e `provider = GOOGLE`. Em seguida, `OAuth2AuthenticationSuccessHandler` devolve o mesmo formato de JSON (token + usuário) dos logins tradicionais.
 
 ### Animais
 
-Qualquer conta (ONG ou usuário comum) pode anunciar. A cidade/UF do animal são as do perfil de quem anuncia — preencha-as em `PUT /api/usuarios/me` antes, senão o cadastro responde 400.
+Qualquer conta (ONG ou usuário comum) pode anunciar. A cidade/UF do animal são as do perfil de quem anuncia — preencha-as em `PUT /api/users/me` antes, senão o cadastro responde 400.
 
 | Método e rota | Login | O que faz |
 |---|---|---|
-| `GET /api/animais` | não | Vitrine: só os `DISPONIVEL`, do mais recente para o mais antigo, com filtros e paginação |
-| `GET /api/animais/{id}` | não | Detalhes completos. Anúncio `INATIVO` só aparece para o dono (para os outros, 404) |
-| `POST /api/animais` | sim | Cadastra — responde 201 com o animal completo |
-| `PUT /api/animais/{id}` | dono | Edição completa (mesmo corpo do cadastro). Animal adotado não pode ser editado |
-| `PATCH /api/animais/{id}/status` | dono | `{ "status": "ADOTADO" }`, `"INATIVO"` ou `"DISPONIVEL"`. `ADOTADO` é definitivo |
-| `DELETE /api/animais/{id}` | dono | Tira do ar (exclusão lógica: vira `INATIVO`) — responde 204 |
-| `GET /api/animais/meus` | sim | Todos os anúncios da conta logada, em qualquer status |
-| `GET /api/usuarios/{id}/animais` | não | Os disponíveis de um perfil público |
+| `GET /api/animals` | não | Vitrine: só os `AVAILABLE`, do mais recente para o mais antigo, com filtros e paginação |
+| `GET /api/animals/{id}` | não | Detalhes completos. Anúncio `INACTIVE` só aparece para o dono (para os outros, 404) |
+| `POST /api/animals` | sim | Cadastra — responde 201 com o animal completo |
+| `PUT /api/animals/{id}` | dono | Edição completa (mesmo corpo do cadastro). Animal adotado não pode ser editado |
+| `PATCH /api/animals/{id}/status` | dono | `{ "status": "ADOPTED" }`, `"INACTIVE"` ou `"AVAILABLE"`. `ADOPTED` é definitivo |
+| `DELETE /api/animals/{id}` | dono | Tira do ar (exclusão lógica: vira `INACTIVE`) — responde 204 |
+| `GET /api/animals/mine` | sim | Todos os anúncios da conta logada, em qualquer status |
+| `GET /api/users/{id}/animals` | não | Os disponíveis de um perfil público |
 
 Quem não é dono recebe 403 nas rotas de alteração.
 
 **Cadastro / edição** (`POST` e `PUT`):
 ```json
 {
-  "nome": "Thor",
-  "especie": "CACHORRO",
-  "raca": "Vira-lata",
-  "sexo": "MACHO",
-  "idadeValor": 3,
-  "idadeUnidade": "ANOS",
-  "porte": "GRANDE",
-  "vacinado": true,
-  "castrado": true,
-  "vermifugado": true,
-  "necessidadesEspeciais": false,
-  "nivelEnergia": "ALTO",
-  "temperamento": "PROTETOR",
-  "nivelIndependencia": "MODERADO",
-  "nivelVocalizacao": "MODERADO",
-  "bomComCriancas": true,
-  "bomComCaes": true,
-  "bomComGatos": false,
-  "adaptadoApartamento": false,
-  "resumo": "Protetor e brincalhão, pronto para uma nova aventura!",
-  "historia": "Thor foi resgatado ainda filhote...",
-  "fotos": ["data:image/jpeg;base64,...", "https://..."]
+  "name": "Thor",
+  "species": "DOG",
+  "breed": "Vira-lata",
+  "sex": "MALE",
+  "ageValue": 3,
+  "ageUnit": "YEARS",
+  "size": "LARGE",
+  "vaccinated": true,
+  "neutered": true,
+  "dewormed": true,
+  "specialNeeds": false,
+  "energyLevel": "HIGH",
+  "temperament": "PROTECTIVE",
+  "independenceLevel": "MODERATE",
+  "vocalization": "MODERATE",
+  "goodWithChildren": true,
+  "goodWithDogs": true,
+  "goodWithCats": false,
+  "apartmentFriendly": false,
+  "summary": "Protetor e brincalhão, pronto para uma nova aventura!",
+  "story": "Thor foi resgatado ainda filhote...",
+  "photos": ["data:image/jpeg;base64,...", "https://..."]
 }
 ```
 
@@ -281,36 +295,36 @@ Valores aceitos:
 
 | Campo | Valores |
 |---|---|
-| `especie` | `CACHORRO`, `GATO`, `OUTRO` |
-| `sexo` | `MACHO`, `FEMEA` |
-| `porte` | `PEQUENO`, `MEDIO`, `GRANDE` |
-| `idadeUnidade` | `MESES` (0 a 11) ou `ANOS` (1 a 30) |
-| `nivelEnergia`, `nivelIndependencia`, `nivelVocalizacao` | `BAIXO`, `MODERADO`, `ALTO` |
-| `temperamento` | `CALMO`, `BRINCALHAO`, `AFETUOSO`, `PROTETOR`, `INDEPENDENTE` |
-| `fotos` | de 1 a 4, URL http(s) ou data URL de imagem (mesmas regras da foto de perfil); a primeira é a capa |
+| `species` | `DOG`, `CAT`, `OTHER` |
+| `sex` | `MALE`, `FEMALE` |
+| `size` | `SMALL`, `MEDIUM`, `LARGE` |
+| `ageUnit` | `MONTHS` (0 a 11) ou `YEARS` (1 a 30) |
+| `energyLevel`, `independenceLevel`, `vocalization` | `LOW`, `MODERATE`, `HIGH` |
+| `temperament` | `CALM`, `PLAYFUL`, `AFFECTIONATE`, `PROTECTIVE`, `INDEPENDENT` |
+| `photos` | de 1 a 4, URL http(s) ou data URL de imagem (mesmas regras da foto de perfil); a primeira é a capa |
 
-Os itens de saúde (`vacinado`, `castrado`, `vermifugado`, `necessidadesEspeciais`) são opcionais e valem `false` quando não vêm. `faixaEtaria` (`FILHOTE`, `ADULTO`, `IDOSO`) não é enviada: a API calcula pela idade (menos de 1 ano é filhote; a partir de 8 anos, idoso).
+Os itens de saúde (`vaccinated`, `neutered`, `dewormed`, `specialNeeds`) são opcionais e valem `false` quando não vêm. `ageGroup` (`PUPPY`, `ADULT`, `SENIOR`) não é enviado: a API calcula pela idade (menos de 1 ano é filhote; a partir de 8 anos, idoso).
 
-A resposta do cadastro, da edição e de `GET /api/animais/{id}` traz esses campos mais `id`, `faixaEtaria`, `status`, `cidade`, `estado`, `dono` (`id`, `nome`, `fotoUrl`, `tipoUsuario`, `isVerificado`), `dataCriacao` e `dataAtualizacao`.
+A resposta do cadastro, da edição e de `GET /api/animals/{id}` traz esses campos mais `id`, `ageGroup`, `status`, `city`, `state`, `owner` (`id`, `name`, `photoUrl`, `userType`, `isVerified`), `createdAt` e `updatedAt`.
 
-**Listagem** — filtros opcionais na query string; os de múltipla escolha podem se repetir:
+**Listagem** — filtros opcionais na query string. Os de múltipla escolha têm nome no plural e podem se repetir:
 ```
-GET /api/animais?especie=CACHORRO&especie=GATO&porte=PEQUENO&cidade=Araranguá&page=0&size=12
+GET /api/animals?species=DOG&species=CAT&sizes=SMALL&city=Araranguá&page=0&size=12
 ```
 
-Filtros: `busca` (nome, raça ou cidade), `especie`, `porte`, `sexo`, `faixaEtaria`, `nivelEnergia`, `temperamento`, `necessidadesEspeciais=true`, `cidade`, `estado`. Paginação: `page` começa em 0; `size` padrão 12, máximo 50.
+Filtros: `search` (nome, raça ou cidade), `species`, `sizes`, `sexes`, `ageGroups`, `energyLevels`, `temperaments`, `specialNeeds=true`, `city`, `state`. Paginação: `page` começa em 0; `size` padrão 12, máximo 50. Atenção: `size` é o tamanho da página — o filtro de porte é `sizes`.
 
 ```json
 {
-  "conteudo": [ { "id": 1, "nome": "Thor", "fotoCapa": "data:image/jpeg;base64,...", "cidade": "Araranguá", "...": "..." } ],
-  "pagina": 0,
-  "tamanho": 12,
-  "totalElementos": 1,
-  "totalPaginas": 1
+  "content": [ { "id": 1, "name": "Thor", "coverPhoto": "data:image/jpeg;base64,...", "city": "Araranguá", "...": "..." } ],
+  "page": 0,
+  "size": 12,
+  "totalElements": 1,
+  "totalPages": 1
 }
 ```
 
-Os cards (listagem, meus animais, perfil e favoritos) trazem só a `fotoCapa` e não trazem a `historia` — a página de detalhes busca o animal completo.
+Os cards (listagem, meus animais, perfil e favoritos) trazem só a `coverPhoto` e não trazem a `story` — a página de detalhes busca o animal completo.
 
 ### Favoritos
 
@@ -318,21 +332,22 @@ Todas exigem login.
 
 | Método e rota | O que faz |
 |---|---|
-| `GET /api/favoritos` | Cards dos animais favoritados, do mais recente para o mais antigo. Inativos somem; adotados continuam, com `status: ADOTADO` |
-| `GET /api/favoritos/ids` | Só os ids — para marcar os corações nos cards |
-| `PUT /api/favoritos/{animalId}` | Favorita. Repetir não duplica — responde 204 |
-| `DELETE /api/favoritos/{animalId}` | Desfavorita — responde 204 |
+| `GET /api/favorites` | Cards dos animais favoritados, do mais recente para o mais antigo. Inativos somem; adotados continuam, com `status: ADOPTED` |
+| `GET /api/favorites/ids` | Só os ids — para marcar os corações nos cards |
+| `PUT /api/favorites/{animalId}` | Favorita. Repetir não duplica — responde 204 |
+| `DELETE /api/favorites/{animalId}` | Desfavorita — responde 204 |
 
 ## Decisões de projeto
 
+- **Código em inglês, textos em português**: classes, campos, JSON, rotas, valores de enum, tabelas e colunas usam inglês, o padrão de mercado. Mensagens de erro (lidas pelo usuário final), comentários e documentação ficam em português. Termos brasileiros sem tradução exata (`cnpj`, `cep`) mantêm o nome.
 - **JWT stateless**: como o requisito pede desativação de CSRF e uma API REST pura, optei por sessão stateless com JWT em vez de sessão HTTP tradicional — é o padrão de mercado para esse tipo de API e evita problemas de CORS/cookies com clientes SPA/mobile.
 - **Senha nula para contas OAuth2**: usuários criados via Google não têm senha própria; o login tradicional (`/login`) rejeita essas contas com uma mensagem explicativa.
 - **Normalização nos DTOs**: os construtores compactos dos records limpam os campos (trim, vazio vira null, CNPJ/CEP só com dígitos, rede social sem `@`, link com protocolo) antes da validação. A Service recebe dados já canônicos e cuida só da regra de negócio.
 - **CNPJ pelo Bean Validation**: `@CNPJ` do Hibernate Validator confere os dígitos verificadores; um `@Pattern` extra barra sequências repetidas (`00.000.000/0000-00`), que o `@CNPJ` sozinho aceita.
 - **JWT mínimo**: o token carrega apenas o e-mail (subject) e a validade. Papel e id não viram claim para não circular desatualizados — quem responde por eles é o banco, relido a cada requisição autenticada.
-- **`ddl-auto=validate`**: o schema vem do `sql/schema.sql`; o Hibernate só confere se o banco bate com as entidades, em vez de alterar tabelas sozinho.
+- **`ddl-auto=validate`**: o schema vem do `sql/schema.sql`; o Hibernate só confere se o banco bate com as entidades, em vez de alterar tabelas sozinho. Mudanças em bancos já existentes vão em `sql/migrations/`, numeradas e transacionais.
 - **Constraints de banco** (`CHECK`) reforçam no schema.sql as mesmas regras já validadas na aplicação (ONG exige CNPJ; contas LOCAL exigem senha; valores dos enums dos animais) como camada extra de integridade.
-- **Localização do animal = a do dono**: `animais` não tem cidade/UF; a listagem filtra pelo endereço do perfil de quem anunciou. Filtro por distância ("perto de mim") fica para quando `usuarios` tiver latitude/longitude.
-- **Exclusão lógica de animais**: `DELETE` só muda o status para `INATIVO`, preservando o histórico (favoritos e, no futuro, pedidos de adoção).
+- **Localização do animal = a do dono**: `animals` não tem cidade/UF; a listagem filtra pelo endereço do perfil de quem anunciou. Filtro por distância ("perto de mim") fica para quando `users` tiver latitude/longitude.
+- **Exclusão lógica de animais**: `DELETE` só muda o status para `INACTIVE`, preservando o histórico (favoritos e, no futuro, pedidos de adoção).
 - **Cards leves**: a listagem busca só a foto de capa (numa consulta única) e carrega o dono junto, então uma página custa duas consultas SQL, com payload pequeno mesmo com fotos em data URL.
 - **Favoritar é idempotente no banco**: `INSERT ... ON CONFLICT DO NOTHING` garante um favorito por par usuário/animal mesmo com cliques simultâneos.
