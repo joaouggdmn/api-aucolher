@@ -14,11 +14,11 @@ import java.util.List;
  * Animal anunciado para adoção por uma ONG ou por um usuário comum.
  *
  * A localização não fica aqui: o animal está onde o dono está, então cidade
- * e UF vêm de {@link #dono}. Os campos seguem as etapas do cadastro no
+ * e UF vêm de {@link #owner}. Os campos seguem as etapas do cadastro no
  * frontend — dados básicos, saúde, comportamento/compatibilidade e anúncio.
  */
 @Entity
-@Table(name = "animais")
+@Table(name = "animals")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -29,134 +29,134 @@ public class Animal {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "dono_id", nullable = false)
-    private User dono;
+    @JoinColumn(name = "owner_id", nullable = false)
+    private User owner;
 
     // ===================== Dados básicos =====================
 
     @Column(nullable = false, length = 60)
-    private String nome;
+    private String name;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    private Especie especie;
+    private Species species;
 
     @Column(nullable = false, length = 60)
-    private String raca;
+    private String breed;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 10)
-    private Sexo sexo;
+    private Sex sex;
 
-    @Column(name = "idade_valor", nullable = false)
-    private Integer idadeValor;
+    @Column(name = "age_value", nullable = false)
+    private Integer ageValue;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "idade_unidade", nullable = false, length = 10)
-    private UnidadeIdade idadeUnidade;
+    @Column(name = "age_unit", nullable = false, length = 10)
+    private AgeUnit ageUnit;
 
-    /** Calculada a partir da idade a cada gravação (ver calcularFaixaEtaria) — não vem do cliente. */
+    /** Calculada a partir da idade a cada gravação (ver computeAgeGroup) — não vem do cliente. */
     @Enumerated(EnumType.STRING)
-    @Column(name = "faixa_etaria", nullable = false, length = 10)
-    private FaixaEtaria faixaEtaria;
+    @Column(name = "age_group", nullable = false, length = 10)
+    private AgeGroup ageGroup;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 10)
-    private Porte porte;
+    private AnimalSize size;
 
     // ===================== Saúde =====================
 
     @Column(nullable = false)
-    private Boolean vacinado = false;
+    private Boolean vaccinated = false;
 
     @Column(nullable = false)
-    private Boolean castrado = false;
+    private Boolean neutered = false;
 
     @Column(nullable = false)
-    private Boolean vermifugado = false;
+    private Boolean dewormed = false;
 
-    @Column(name = "necessidades_especiais", nullable = false)
-    private Boolean necessidadesEspeciais = false;
+    @Column(name = "special_needs", nullable = false)
+    private Boolean specialNeeds = false;
 
     // ===================== Comportamento e compatibilidade =====================
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "nivel_energia", nullable = false, length = 10)
-    private Nivel nivelEnergia;
+    @Column(name = "energy_level", nullable = false, length = 10)
+    private Level energyLevel;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    private Temperamento temperamento;
+    private Temperament temperament;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "nivel_independencia", nullable = false, length = 10)
-    private Nivel nivelIndependencia;
+    @Column(name = "independence_level", nullable = false, length = 10)
+    private Level independenceLevel;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "nivel_vocalizacao", nullable = false, length = 10)
-    private Nivel nivelVocalizacao;
+    @Column(name = "vocalization", nullable = false, length = 10)
+    private Level vocalization;
 
-    @Column(name = "bom_com_criancas", nullable = false)
-    private Boolean bomComCriancas;
+    @Column(name = "good_with_children", nullable = false)
+    private Boolean goodWithChildren;
 
-    @Column(name = "bom_com_caes", nullable = false)
-    private Boolean bomComCaes;
+    @Column(name = "good_with_dogs", nullable = false)
+    private Boolean goodWithDogs;
 
-    @Column(name = "bom_com_gatos", nullable = false)
-    private Boolean bomComGatos;
+    @Column(name = "good_with_cats", nullable = false)
+    private Boolean goodWithCats;
 
-    @Column(name = "adaptado_apartamento", nullable = false)
-    private Boolean adaptadoApartamento;
+    @Column(name = "apartment_friendly", nullable = false)
+    private Boolean apartmentFriendly;
 
     // ===================== Anúncio =====================
 
     /** Frase curta do card da listagem. */
     @Column(nullable = false, length = 200)
-    private String resumo;
+    private String summary;
 
     @Column(nullable = false, columnDefinition = "TEXT")
-    private String historia;
+    private String story;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    private StatusAnimal status = StatusAnimal.DISPONIVEL;
+    private AnimalStatus status = AnimalStatus.AVAILABLE;
 
     /**
      * De 1 a 4 fotos; a primeira é a capa do card. A ordem da lista vira a
-     * coluna "ordem" (@OrderColumn), como a equipe no perfil da ONG.
+     * coluna "sort_order" (@OrderColumn), como a equipe no perfil da ONG.
      */
     @ElementCollection
-    @CollectionTable(name = "animal_fotos", joinColumns = @JoinColumn(name = "animal_id"))
-    @OrderColumn(name = "ordem")
+    @CollectionTable(name = "animal_photos", joinColumns = @JoinColumn(name = "animal_id"))
+    @OrderColumn(name = "sort_order")
     @Column(name = "url", nullable = false, columnDefinition = "TEXT")
-    private List<String> fotos = new ArrayList<>();
+    private List<String> photos = new ArrayList<>();
 
-    @Column(name = "data_criacao", nullable = false, updatable = false)
-    private LocalDateTime dataCriacao;
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
 
-    @Column(name = "data_atualizacao", nullable = false)
-    private LocalDateTime dataAtualizacao;
+    @Column(name = "updated_at", nullable = false)
+    private LocalDateTime updatedAt;
 
     @PrePersist
-    protected void aoPersistir() {
-        dataCriacao = LocalDateTime.now();
-        dataAtualizacao = dataCriacao;
-        calcularFaixaEtaria();
+    protected void onPersist() {
+        createdAt = LocalDateTime.now();
+        updatedAt = createdAt;
+        computeAgeGroup();
     }
 
     @PreUpdate
-    protected void aoAtualizar() {
-        dataAtualizacao = LocalDateTime.now();
-        calcularFaixaEtaria();
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
+        computeAgeGroup();
     }
 
     /** Recalculada a cada gravação, assim nunca fica em desacordo com a idade informada. */
-    private void calcularFaixaEtaria() {
-        faixaEtaria = FaixaEtaria.de(idadeValor, idadeUnidade);
+    private void computeAgeGroup() {
+        ageGroup = AgeGroup.of(ageValue, ageUnit);
     }
 
     /** Compara pelo e-mail, que é o que vem no token. Visitante sem login (null) nunca é o dono. */
-    public boolean pertenceA(String email) {
-        return email != null && email.equals(dono.getEmail());
+    public boolean isOwnedBy(String email) {
+        return email != null && email.equals(owner.getEmail());
     }
 }
