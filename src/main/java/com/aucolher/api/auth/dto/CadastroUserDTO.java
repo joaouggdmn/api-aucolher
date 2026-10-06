@@ -1,7 +1,7 @@
 package com.aucolher.api.auth.dto;
 
-import com.aucolher.api.shared.validation.FotoUrl;
-import com.aucolher.api.shared.validation.Sanitizador;
+import com.aucolher.api.shared.validation.PhotoUrl;
+import com.aucolher.api.shared.validation.Sanitizer;
 import jakarta.validation.constraints.*;
 
 public record CadastroUserDTO(
@@ -19,14 +19,14 @@ public record CadastroUserDTO(
         @Size(min = 6, message = "A senha deve ter no mínimo 6 caracteres")
         String senha,
 
-        @Size(max = FotoUrl.TAMANHO_MAXIMO, message = "A foto é grande demais")
-        @Pattern(regexp = FotoUrl.FORMATO, message = "Foto em formato inválido")
+        @Size(max = PhotoUrl.MAX_LENGTH, message = "A foto é grande demais")
+        @Pattern(regexp = PhotoUrl.FORMAT, message = "Foto em formato inválido")
         String fotoUrl
 ) {
 
     public CadastroUserDTO {
-        nome = Sanitizador.texto(nome);
-        email = Sanitizador.texto(email);
-        fotoUrl = Sanitizador.texto(fotoUrl);
+        nome = Sanitizer.text(nome);
+        email = Sanitizer.text(email);
+        fotoUrl = Sanitizer.text(fotoUrl);
     }
 }

@@ -1,6 +1,6 @@
 package com.aucolher.api.usuario.dto;
 
-import com.aucolher.api.shared.validation.Sanitizador;
+import com.aucolher.api.shared.validation.Sanitizer;
 import com.aucolher.api.usuario.entity.HorarioVisita;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -18,8 +18,8 @@ public record HorarioVisitaDTO(
 ) {
 
     public HorarioVisitaDTO {
-        dias = Sanitizador.texto(dias);
-        horario = Sanitizador.texto(horario);
+        dias = Sanitizer.text(dias);
+        horario = Sanitizer.text(horario);
     }
 
     public static HorarioVisitaDTO from(HorarioVisita faixa) {

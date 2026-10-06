@@ -7,20 +7,20 @@ import java.util.List;
 /**
  * Formato padrão das respostas paginadas da API.
  *
- * Devolver o Page do Spring direto expõe um JSON grande, em inglês e que o
+ * Devolver o Page do Spring direto expõe um JSON grande e que o
  * próprio Spring Data avisa que pode mudar entre versões — este record fixa
- * o contrato com o frontend. `pagina` começa em 0.
+ * o contrato com o frontend. `page` começa em 0.
  */
-public record PaginaDTO<T>(
-        List<T> conteudo,
-        int pagina,
-        int tamanho,
-        long totalElementos,
-        int totalPaginas
+public record PageDTO<T>(
+        List<T> content,
+        int page,
+        int size,
+        long totalElements,
+        int totalPages
 ) {
 
-    public static <T> PaginaDTO<T> from(Page<T> page) {
-        return new PaginaDTO<>(
+    public static <T> PageDTO<T> from(Page<T> page) {
+        return new PageDTO<>(
                 page.getContent(),
                 page.getNumber(),
                 page.getSize(),

@@ -1,8 +1,8 @@
 package com.aucolher.api.animal.dto;
 
 import com.aucolher.api.animal.entity.*;
-import com.aucolher.api.shared.validation.FotoUrl;
-import com.aucolher.api.shared.validation.Sanitizador;
+import com.aucolher.api.shared.validation.PhotoUrl;
+import com.aucolher.api.shared.validation.Sanitizer;
 import jakarta.validation.constraints.*;
 
 import java.util.List;
@@ -87,21 +87,21 @@ public record AnimalRequestDTO(
         @Size(min = 1, max = 4, message = "Envie de 1 a 4 fotos")
         List<
                 @NotBlank(message = "Foto vazia")
-                @Size(max = FotoUrl.TAMANHO_MAXIMO, message = "Uma das fotos é grande demais")
-                @Pattern(regexp = FotoUrl.FORMATO, message = "Foto em formato inválido")
+                @Size(max = PhotoUrl.MAX_LENGTH, message = "Uma das fotos é grande demais")
+                @Pattern(regexp = PhotoUrl.FORMAT, message = "Foto em formato inválido")
                 String> fotos
 ) {
 
     public AnimalRequestDTO {
-        nome = Sanitizador.texto(nome);
-        raca = Sanitizador.texto(raca);
-        resumo = Sanitizador.texto(resumo);
-        historia = Sanitizador.texto(historia);
+        nome = Sanitizer.text(nome);
+        raca = Sanitizer.text(raca);
+        resumo = Sanitizer.text(resumo);
+        historia = Sanitizer.text(historia);
         vacinado = Boolean.TRUE.equals(vacinado);
         castrado = Boolean.TRUE.equals(castrado);
         vermifugado = Boolean.TRUE.equals(vermifugado);
         necessidadesEspeciais = Boolean.TRUE.equals(necessidadesEspeciais);
-        fotos = fotos == null ? List.of() : fotos.stream().map(Sanitizador::texto).toList();
+        fotos = fotos == null ? List.of() : fotos.stream().map(Sanitizer::text).toList();
     }
 
     /**

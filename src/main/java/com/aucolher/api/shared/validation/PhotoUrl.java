@@ -7,10 +7,10 @@ package com.aucolher.api.shared.validation;
  * arquivos, o data URL da imagem que o frontend já comprime para ~400px.
  * O limite de tamanho barra fotos originais sem compressão.
  */
-public final class FotoUrl {
+public final class PhotoUrl {
 
-    public static final int TAMANHO_MAXIMO = 300_000;
-    public static final String FORMATO = "^(https?://|data:image/(jpeg|png|webp);base64,).+$";
+    public static final int MAX_LENGTH = 300_000;
+    public static final String FORMAT = "^(https?://|data:image/(jpeg|png|webp);base64,).+$";
 
-    private FotoUrl() {}
+    private PhotoUrl() {}
 }

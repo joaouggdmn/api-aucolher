@@ -5,7 +5,7 @@ import com.aucolher.api.security.CustomOAuth2UserService;
 import com.aucolher.api.security.CustomUserDetailsService;
 import com.aucolher.api.security.JwtService;
 import com.aucolher.api.security.OAuth2AuthenticationSuccessHandler;
-import com.aucolher.api.shared.dto.PaginaDTO;
+import com.aucolher.api.shared.dto.PageDTO;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -51,11 +51,11 @@ class AnimalControllerTest {
     @Test
     void listagemEPublica() throws Exception {
         when(animalService.listarDisponiveis(any(), anyInt(), anyInt()))
-                .thenReturn(new PaginaDTO<>(List.of(), 0, 12, 0, 0));
+                .thenReturn(new PageDTO<>(List.of(), 0, 12, 0, 0));
 
         mockMvc.perform(get("/api/animais").param("especie", "GATO"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.totalElementos").value(0));
+                .andExpect(jsonPath("$.totalElements").value(0));
     }
 
     @Test
@@ -67,7 +67,7 @@ class AnimalControllerTest {
     void filtroComValorForaDaListaDa400() throws Exception {
         mockMvc.perform(get("/api/animais").param("especie", "PASSARO"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.erros.especie").exists());
+                .andExpect(jsonPath("$.errors.especie").exists());
     }
 
     @Test
@@ -92,9 +92,9 @@ class AnimalControllerTest {
     void cadastroIncompletoApontaOsCampos() throws Exception {
         mockMvc.perform(post("/api/animais").contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.erros.nome").exists())
-                .andExpect(jsonPath("$.erros.especie").exists())
-                .andExpect(jsonPath("$.erros.fotos").value("Envie de 1 a 4 fotos"));
+                .andExpect(jsonPath("$.errors.nome").exists())
+                .andExpect(jsonPath("$.errors.especie").exists())
+                .andExpect(jsonPath("$.errors.fotos").value("Envie de 1 a 4 fotos"));
     }
 
     @Test
@@ -110,7 +110,7 @@ class AnimalControllerTest {
 
         mockMvc.perform(post("/api/animais").contentType(MediaType.APPLICATION_JSON).content(corpo))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.erros.idadeValida").exists());
+                .andExpect(jsonPath("$.errors.idadeValida").exists());
     }
 
     @Test

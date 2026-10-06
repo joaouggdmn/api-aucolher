@@ -1,7 +1,7 @@
 package com.aucolher.api.animal.dto;
 
 import com.aucolher.api.animal.entity.*;
-import com.aucolher.api.shared.validation.Sanitizador;
+import com.aucolher.api.shared.validation.Sanitizer;
 
 import java.util.List;
 
@@ -26,8 +26,8 @@ public record AnimalFiltroDTO(
 ) {
 
     public AnimalFiltroDTO {
-        busca = Sanitizador.texto(busca);
-        cidade = Sanitizador.texto(cidade);
-        estado = Sanitizador.sigla(estado);
+        busca = Sanitizer.text(busca);
+        cidade = Sanitizer.text(cidade);
+        estado = Sanitizer.uppercase(estado);
     }
 }

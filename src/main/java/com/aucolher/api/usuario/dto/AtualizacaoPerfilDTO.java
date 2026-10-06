@@ -1,8 +1,8 @@
 package com.aucolher.api.usuario.dto;
 
-import com.aucolher.api.shared.validation.AnoFundacao;
-import com.aucolher.api.shared.validation.FotoUrl;
-import com.aucolher.api.shared.validation.Sanitizador;
+import com.aucolher.api.shared.validation.FoundedYear;
+import com.aucolher.api.shared.validation.PhotoUrl;
+import com.aucolher.api.shared.validation.Sanitizer;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 
@@ -15,7 +15,7 @@ import java.util.List;
  * não mudam por aqui.
  *
  * É uma substituição completa (PUT): campo opcional que não vier é apagado.
- * Mesma normalização do cadastro (ver {@link Sanitizador}).
+ * Mesma normalização do cadastro (ver {@link Sanitizer}).
  */
 public record AtualizacaoPerfilDTO(
 
@@ -23,8 +23,8 @@ public record AtualizacaoPerfilDTO(
         @Size(min = 2, max = 150, message = "O nome deve ter entre 2 e 150 caracteres")
         String nome,
 
-        @Size(max = FotoUrl.TAMANHO_MAXIMO, message = "A foto é grande demais")
-        @Pattern(regexp = FotoUrl.FORMATO, message = "Foto em formato inválido")
+        @Size(max = PhotoUrl.MAX_LENGTH, message = "A foto é grande demais")
+        @Pattern(regexp = PhotoUrl.FORMAT, message = "Foto em formato inválido")
         String fotoUrl,
 
         @Size(max = 500, message = "A bio deve ter no máximo 500 caracteres")
@@ -49,7 +49,7 @@ public record AtualizacaoPerfilDTO(
         )
         String facebook,
 
-        @AnoFundacao
+        @FoundedYear
         Integer anoFundacao,
 
         @Valid
@@ -86,21 +86,21 @@ public record AtualizacaoPerfilDTO(
 ) {
 
     public AtualizacaoPerfilDTO {
-        nome = Sanitizador.texto(nome);
-        fotoUrl = Sanitizador.texto(fotoUrl);
-        bio = Sanitizador.texto(bio);
-        emailInstitucional = Sanitizador.texto(emailInstitucional);
-        instagram = Sanitizador.semArroba(instagram);
-        twitter = Sanitizador.semArroba(twitter);
-        facebook = Sanitizador.comProtocolo(facebook);
+        nome = Sanitizer.text(nome);
+        fotoUrl = Sanitizer.text(fotoUrl);
+        bio = Sanitizer.text(bio);
+        emailInstitucional = Sanitizer.text(emailInstitucional);
+        instagram = Sanitizer.withoutAt(instagram);
+        twitter = Sanitizer.withoutAt(twitter);
+        facebook = Sanitizer.withProtocol(facebook);
         equipe = equipe == null ? List.of() : equipe;
         horariosVisita = horariosVisita == null ? List.of() : horariosVisita;
-        cep = Sanitizador.apenasDigitos(cep);
-        logradouro = Sanitizador.texto(logradouro);
-        numero = Sanitizador.texto(numero);
-        complemento = Sanitizador.texto(complemento);
-        bairro = Sanitizador.texto(bairro);
-        cidade = Sanitizador.texto(cidade);
-        estado = Sanitizador.sigla(estado);
+        cep = Sanitizer.digitsOnly(cep);
+        logradouro = Sanitizer.text(logradouro);
+        numero = Sanitizer.text(numero);
+        complemento = Sanitizer.text(complemento);
+        bairro = Sanitizer.text(bairro);
+        cidade = Sanitizer.text(cidade);
+        estado = Sanitizer.uppercase(estado);
     }
 }

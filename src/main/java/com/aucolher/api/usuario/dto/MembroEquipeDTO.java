@@ -1,6 +1,6 @@
 package com.aucolher.api.usuario.dto;
 
-import com.aucolher.api.shared.validation.Sanitizador;
+import com.aucolher.api.shared.validation.Sanitizer;
 import com.aucolher.api.usuario.entity.MembroEquipe;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -17,8 +17,8 @@ public record MembroEquipeDTO(
 ) {
 
     public MembroEquipeDTO {
-        nome = Sanitizador.texto(nome);
-        funcao = Sanitizador.texto(funcao);
+        nome = Sanitizer.text(nome);
+        funcao = Sanitizer.text(funcao);
     }
 
     public static MembroEquipeDTO from(MembroEquipe membro) {
