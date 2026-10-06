@@ -6,10 +6,10 @@ import com.aucolher.api.animal.dto.AnimalRequestDTO;
 import com.aucolher.api.animal.dto.AnimalResumoDTO;
 import com.aucolher.api.animal.entity.Animal;
 import com.aucolher.api.animal.entity.StatusAnimal;
-import com.aucolher.api.shared.dto.PaginaDTO;
-import com.aucolher.api.shared.exception.AcessoNegadoException;
+import com.aucolher.api.shared.dto.PageDTO;
+import com.aucolher.api.shared.exception.ForbiddenException;
 import com.aucolher.api.shared.exception.BusinessException;
-import com.aucolher.api.shared.exception.RecursoNaoEncontradoException;
+import com.aucolher.api.shared.exception.ResourceNotFoundException;
 import com.aucolher.api.usuario.UsuarioRepository;
 import com.aucolher.api.usuario.entity.Usuario;
 import lombok.RequiredArgsConstructor;
@@ -75,7 +75,7 @@ public class AnimalService {
 
     /** Vitrine pública: só disponíveis, com filtros, do anúncio mais recente para o mais antigo. */
     @Transactional(readOnly = true)
-    public PaginaDTO<AnimalResumoDTO> listarDisponiveis(AnimalFiltroDTO filtro, int pagina, int tamanho) {
+    public PageDTO<AnimalResumoDTO> listarDisponiveis(AnimalFiltroDTO filtro, int pagina, int tamanho) {
         PageRequest paginacao = PageRequest.of(
                 Math.max(pagina, 0),
                 Math.min(Math.max(tamanho, 1), TAMANHO_PAGINA_MAXIMO),
@@ -83,7 +83,7 @@ public class AnimalService {
 
         Page<Animal> resultado = animalRepository.findAll(AnimalSpecifications.disponiveis(filtro), paginacao);
         Map<Long, AnimalResumoDTO> resumos = resumosPorId(resultado.getContent());
-        return PaginaDTO.from(resultado.map(animal -> resumos.get(animal.getId())));
+        return PageDTO.from(resultado.map(animal -> resumos.get(animal.getId())));
     }
 
     /** "Meus animais": todos os anúncios da conta logada, inclusive adotados e inativos. */
@@ -96,7 +96,7 @@ public class AnimalService {
     @Transactional(readOnly = true)
     public List<AnimalResumoDTO> listarDoPerfil(Long usuarioId) {
         if (!usuarioRepository.existsById(usuarioId)) {
-            throw new RecursoNaoEncontradoException("Usuário não encontrado");
+            throw new ResourceNotFoundException("Usuário não encontrado");
         }
         return resumir(animalRepository.findByDonoIdAndStatusOrderByDataCriacaoDesc(usuarioId, StatusAnimal.DISPONIVEL));
     }
@@ -167,7 +167,7 @@ public class AnimalService {
     private Animal buscarDoDono(Long id, String emailDono) {
         Animal animal = buscarAnimal(id);
         if (!animal.pertenceA(emailDono)) {
-            throw new AcessoNegadoException("Só quem anunciou pode alterar este animal");
+            throw new ForbiddenException("Só quem anunciou pode alterar este animal");
         }
         return animal;
     }
@@ -184,8 +184,8 @@ public class AnimalService {
         return animalRepository.findById(id).orElseThrow(this::animalNaoEncontrado);
     }
 
-    private RecursoNaoEncontradoException animalNaoEncontrado() {
-        return new RecursoNaoEncontradoException("Animal não encontrado");
+    private ResourceNotFoundException animalNaoEncontrado() {
+        return new ResourceNotFoundException("Animal não encontrado");
     }
 
     /** Copia o anúncio do DTO para a entidade — usado no cadastro e na edição. */

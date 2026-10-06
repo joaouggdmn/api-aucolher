@@ -2,9 +2,9 @@ package com.aucolher.api.animal;
 
 import com.aucolher.api.animal.dto.AnimalRequestDTO;
 import com.aucolher.api.animal.entity.*;
-import com.aucolher.api.shared.exception.AcessoNegadoException;
+import com.aucolher.api.shared.exception.ForbiddenException;
 import com.aucolher.api.shared.exception.BusinessException;
-import com.aucolher.api.shared.exception.RecursoNaoEncontradoException;
+import com.aucolher.api.shared.exception.ResourceNotFoundException;
 import com.aucolher.api.usuario.UsuarioRepository;
 import com.aucolher.api.usuario.entity.TipoUsuario;
 import com.aucolher.api.usuario.entity.Usuario;
@@ -69,9 +69,9 @@ class AnimalServiceTest {
         when(animalRepository.findById(10L)).thenReturn(Optional.of(animal(StatusAnimal.INATIVO)));
 
         assertThatThrownBy(() -> animalService.buscarDetalhe(10L, null))
-                .isInstanceOf(RecursoNaoEncontradoException.class);
+                .isInstanceOf(ResourceNotFoundException.class);
         assertThatThrownBy(() -> animalService.buscarDetalhe(10L, EMAIL_OUTRO))
-                .isInstanceOf(RecursoNaoEncontradoException.class);
+                .isInstanceOf(ResourceNotFoundException.class);
         assertThat(animalService.buscarDetalhe(10L, EMAIL_DONO).id()).isEqualTo(10L);
     }
 
@@ -80,7 +80,7 @@ class AnimalServiceTest {
         when(animalRepository.findById(10L)).thenReturn(Optional.of(animal(StatusAnimal.DISPONIVEL)));
 
         assertThatThrownBy(() -> animalService.editar(10L, EMAIL_OUTRO, requestValido()))
-                .isInstanceOf(AcessoNegadoException.class);
+                .isInstanceOf(ForbiddenException.class);
         verify(animalRepository, never()).saveAndFlush(any());
     }
 
@@ -113,7 +113,7 @@ class AnimalServiceTest {
         when(usuarioRepository.existsById(99L)).thenReturn(false);
 
         assertThatThrownBy(() -> animalService.listarDoPerfil(99L))
-                .isInstanceOf(RecursoNaoEncontradoException.class);
+                .isInstanceOf(ResourceNotFoundException.class);
     }
 
     // ===================== Dados de teste =====================

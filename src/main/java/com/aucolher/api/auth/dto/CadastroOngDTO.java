@@ -1,14 +1,14 @@
 package com.aucolher.api.auth.dto;
 
-import com.aucolher.api.shared.validation.AnoFundacao;
-import com.aucolher.api.shared.validation.FotoUrl;
-import com.aucolher.api.shared.validation.Sanitizador;
+import com.aucolher.api.shared.validation.FoundedYear;
+import com.aucolher.api.shared.validation.PhotoUrl;
+import com.aucolher.api.shared.validation.Sanitizer;
 import jakarta.validation.constraints.*;
 import org.hibernate.validator.constraints.br.CNPJ;
 
 /**
  * Cadastro de ONG. O construtor compacto normaliza os campos (ver
- * {@link Sanitizador}), então as validações abaixo só precisam checar o
+ * {@link Sanitizer}), então as validações abaixo só precisam checar o
  * formato canônico — CNPJ e CEP já chegam aqui apenas com dígitos.
  */
 public record CadastroOngDTO(
@@ -35,8 +35,8 @@ public record CadastroOngDTO(
 
         // ===================== Opcionais =====================
 
-        @Size(max = FotoUrl.TAMANHO_MAXIMO, message = "A foto é grande demais")
-        @Pattern(regexp = FotoUrl.FORMATO, message = "Foto em formato inválido")
+        @Size(max = PhotoUrl.MAX_LENGTH, message = "A foto é grande demais")
+        @Pattern(regexp = PhotoUrl.FORMAT, message = "Foto em formato inválido")
         String fotoUrl,
 
         @Size(max = 500, message = "A bio deve ter no máximo 500 caracteres")
@@ -59,7 +59,7 @@ public record CadastroOngDTO(
         )
         String facebook,
 
-        @AnoFundacao
+        @FoundedYear
         Integer anoFundacao,
 
         // ===================== Endereço (obrigatório para ONG) =====================
@@ -93,22 +93,22 @@ public record CadastroOngDTO(
 ) {
 
     public CadastroOngDTO {
-        nome = Sanitizador.texto(nome);
-        email = Sanitizador.texto(email);
-        cnpj = Sanitizador.apenasDigitos(cnpj);
-        fotoUrl = Sanitizador.texto(fotoUrl);
-        bio = Sanitizador.texto(bio);
-        emailInstitucional = Sanitizador.texto(emailInstitucional);
-        instagram = Sanitizador.semArroba(instagram);
-        twitter = Sanitizador.semArroba(twitter);
-        facebook = Sanitizador.comProtocolo(facebook);
-        cep = Sanitizador.apenasDigitos(cep);
-        logradouro = Sanitizador.texto(logradouro);
-        numero = Sanitizador.texto(numero);
-        complemento = Sanitizador.texto(complemento);
-        bairro = Sanitizador.texto(bairro);
-        cidade = Sanitizador.texto(cidade);
-        estado = Sanitizador.sigla(estado);
+        nome = Sanitizer.text(nome);
+        email = Sanitizer.text(email);
+        cnpj = Sanitizer.digitsOnly(cnpj);
+        fotoUrl = Sanitizer.text(fotoUrl);
+        bio = Sanitizer.text(bio);
+        emailInstitucional = Sanitizer.text(emailInstitucional);
+        instagram = Sanitizer.withoutAt(instagram);
+        twitter = Sanitizer.withoutAt(twitter);
+        facebook = Sanitizer.withProtocol(facebook);
+        cep = Sanitizer.digitsOnly(cep);
+        logradouro = Sanitizer.text(logradouro);
+        numero = Sanitizer.text(numero);
+        complemento = Sanitizer.text(complemento);
+        bairro = Sanitizer.text(bairro);
+        cidade = Sanitizer.text(cidade);
+        estado = Sanitizer.uppercase(estado);
         // senha não passa por trim: espaços podem fazer parte dela
     }
 }

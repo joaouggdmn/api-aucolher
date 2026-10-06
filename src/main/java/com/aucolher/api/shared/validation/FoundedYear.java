@@ -15,17 +15,17 @@ import java.time.Year;
 /**
  * Ano de fundação da ONG, usado no cadastro e na edição do perfil.
  *
- * Opcional (nulo é válido), mas quando vem precisa estar entre {@value #MINIMO}
+ * Opcional (nulo é válido), mas quando vem precisa estar entre {@value #MIN}
  * e o ano atual. O teto muda a cada ano, por isso não dá para usar @Min/@Max,
  * que só aceitam constantes.
  */
 @Documented
-@Constraint(validatedBy = AnoFundacao.Validador.class)
+@Constraint(validatedBy = FoundedYear.Validator.class)
 @Target({ElementType.FIELD, ElementType.METHOD, ElementType.PARAMETER, ElementType.ANNOTATION_TYPE})
 @Retention(RetentionPolicy.RUNTIME)
-public @interface AnoFundacao {
+public @interface FoundedYear {
 
-    int MINIMO = 1800;
+    int MIN = 1800;
 
     String message() default "Informe um ano de fundação entre 1800 e o ano atual";
 
@@ -33,11 +33,11 @@ public @interface AnoFundacao {
 
     Class<? extends Payload>[] payload() default {};
 
-    class Validador implements ConstraintValidator<AnoFundacao, Integer> {
+    class Validator implements ConstraintValidator<FoundedYear, Integer> {
 
         @Override
-        public boolean isValid(Integer ano, ConstraintValidatorContext context) {
-            return ano == null || (ano >= MINIMO && ano <= Year.now().getValue());
+        public boolean isValid(Integer year, ConstraintValidatorContext context) {
+            return year == null || (year >= MIN && year <= Year.now().getValue());
         }
     }
 }

@@ -6,7 +6,7 @@ import com.aucolher.api.auth.dto.CadastroUserDTO;
 import com.aucolher.api.auth.dto.LoginDTO;
 import com.aucolher.api.security.JwtService;
 import com.aucolher.api.shared.exception.BusinessException;
-import com.aucolher.api.shared.exception.CredenciaisInvalidasException;
+import com.aucolher.api.shared.exception.InvalidCredentialsException;
 import com.aucolher.api.usuario.UsuarioRepository;
 import com.aucolher.api.usuario.dto.UsuarioResponseDTO;
 import com.aucolher.api.usuario.entity.AuthProvider;
@@ -102,18 +102,18 @@ public class AuthService {
 
     private Usuario autenticar(LoginDTO dto) {
         Usuario usuario = usuarioRepository.findByEmail(dto.email())
-                .orElseThrow(() -> new CredenciaisInvalidasException("E-mail ou senha inválidos"));
+                .orElseThrow(() -> new InvalidCredentialsException("E-mail ou senha inválidos"));
 
         if (usuario.getProvider() != AuthProvider.LOCAL || usuario.getSenha() == null) {
-            throw new CredenciaisInvalidasException("Esta conta utiliza login via Google. Use a autenticação OAuth2");
+            throw new InvalidCredentialsException("Esta conta utiliza login via Google. Use a autenticação OAuth2");
         }
 
         if (!usuario.getAtivo()) {
-            throw new CredenciaisInvalidasException("Usuário inativo");
+            throw new InvalidCredentialsException("Usuário inativo");
         }
 
         if (!passwordEncoder.matches(dto.senha(), usuario.getSenha())) {
-            throw new CredenciaisInvalidasException("E-mail ou senha inválidos");
+            throw new InvalidCredentialsException("E-mail ou senha inválidos");
         }
 
         return usuario;

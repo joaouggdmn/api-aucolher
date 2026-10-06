@@ -7,7 +7,7 @@ import com.aucolher.api.animal.entity.Animal;
 import com.aucolher.api.animal.entity.StatusAnimal;
 import com.aucolher.api.favorito.entity.Favorito;
 import com.aucolher.api.shared.exception.BusinessException;
-import com.aucolher.api.shared.exception.RecursoNaoEncontradoException;
+import com.aucolher.api.shared.exception.ResourceNotFoundException;
 import com.aucolher.api.usuario.UsuarioRepository;
 import com.aucolher.api.usuario.entity.Usuario;
 import lombok.RequiredArgsConstructor;
@@ -51,7 +51,7 @@ public class FavoritoService {
     public void favoritar(String email, Long animalId) {
         Animal animal = animalRepository.findById(animalId)
                 .filter(encontrado -> encontrado.getStatus() != StatusAnimal.INATIVO)
-                .orElseThrow(() -> new RecursoNaoEncontradoException("Animal não encontrado"));
+                .orElseThrow(() -> new ResourceNotFoundException("Animal não encontrado"));
 
         favoritoRepository.favoritar(buscarUsuario(email).getId(), animal.getId());
     }

@@ -5,7 +5,7 @@ import com.aucolher.api.animal.dto.AnimalDetalheDTO;
 import com.aucolher.api.animal.dto.AnimalFiltroDTO;
 import com.aucolher.api.animal.dto.AnimalRequestDTO;
 import com.aucolher.api.animal.dto.AnimalResumoDTO;
-import com.aucolher.api.shared.dto.PaginaDTO;
+import com.aucolher.api.shared.dto.PageDTO;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -34,7 +34,7 @@ public class AnimalController {
      * e paginação — ?page=0&size=12 (página começa em 0; no máximo 50 por página).
      */
     @GetMapping("/animais")
-    public ResponseEntity<PaginaDTO<AnimalResumoDTO>> listar(@ModelAttribute AnimalFiltroDTO filtro,
+    public ResponseEntity<PageDTO<AnimalResumoDTO>> listar(@ModelAttribute AnimalFiltroDTO filtro,
                                                             @RequestParam(defaultValue = "0") int page,
                                                             @RequestParam(defaultValue = "12") int size) {
         return ResponseEntity.ok(animalService.listarDisponiveis(filtro, page, size));
