@@ -126,6 +126,102 @@ CREATE TABLE IF NOT EXISTS ong_horarios_visita (
 
 COMMENT ON TABLE ong_horarios_visita IS 'Faixas de horário de visita da ONG (ex: "Terça a sexta" / "14h às 18h")';
 
+-- ------------------------------------------------------------
+-- animais — anúncios de adoção (ONG ou usuário comum)
+-- Cidade/UF não ficam aqui: o animal está onde o dono está, então
+-- a localização vem de usuarios via dono_id.
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS animais (
+    id                      BIGSERIAL     PRIMARY KEY,
+    dono_id                 BIGINT        NOT NULL REFERENCES usuarios (id) ON DELETE CASCADE,
+
+    -- Dados básicos
+    nome                    VARCHAR(60)   NOT NULL,
+    especie                 VARCHAR(20)   NOT NULL,
+    raca                    VARCHAR(60)   NOT NULL,
+    sexo                    VARCHAR(10)   NOT NULL,
+    idade_valor             INTEGER       NOT NULL,
+    idade_unidade           VARCHAR(10)   NOT NULL,
+    faixa_etaria            VARCHAR(10)   NOT NULL,
+    porte                   VARCHAR(10)   NOT NULL,
+
+    -- Saúde
+    vacinado                BOOLEAN       NOT NULL DEFAULT FALSE,
+    castrado                BOOLEAN       NOT NULL DEFAULT FALSE,
+    vermifugado             BOOLEAN       NOT NULL DEFAULT FALSE,
+    necessidades_especiais  BOOLEAN       NOT NULL DEFAULT FALSE,
+
+    -- Comportamento e compatibilidade
+    nivel_energia           VARCHAR(10)   NOT NULL,
+    temperamento            VARCHAR(20)   NOT NULL,
+    nivel_independencia     VARCHAR(10)   NOT NULL,
+    nivel_vocalizacao       VARCHAR(10)   NOT NULL,
+    bom_com_criancas        BOOLEAN       NOT NULL,
+    bom_com_caes            BOOLEAN       NOT NULL,
+    bom_com_gatos           BOOLEAN       NOT NULL,
+    adaptado_apartamento    BOOLEAN       NOT NULL,
+
+    -- Anúncio
+    resumo                  VARCHAR(200)  NOT NULL,
+    historia                TEXT          NOT NULL,
+    status                  VARCHAR(20)   NOT NULL DEFAULT 'DISPONIVEL',
+    data_criacao            TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    data_atualizacao        TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT chk_animais_especie        CHECK (especie IN ('CACHORRO', 'GATO', 'OUTRO')),
+    CONSTRAINT chk_animais_sexo           CHECK (sexo IN ('MACHO', 'FEMEA')),
+    CONSTRAINT chk_animais_porte          CHECK (porte IN ('PEQUENO', 'MEDIO', 'GRANDE')),
+    CONSTRAINT chk_animais_idade_unidade  CHECK (idade_unidade IN ('ANOS', 'MESES')),
+    CONSTRAINT chk_animais_idade          CHECK ((idade_unidade = 'MESES' AND idade_valor BETWEEN 0 AND 11)
+                                              OR (idade_unidade = 'ANOS'  AND idade_valor BETWEEN 1 AND 30)),
+    CONSTRAINT chk_animais_faixa_etaria   CHECK (faixa_etaria IN ('FILHOTE', 'ADULTO', 'IDOSO')),
+    CONSTRAINT chk_animais_niveis         CHECK (nivel_energia       IN ('BAIXO', 'MODERADO', 'ALTO')
+                                             AND nivel_independencia IN ('BAIXO', 'MODERADO', 'ALTO')
+                                             AND nivel_vocalizacao   IN ('BAIXO', 'MODERADO', 'ALTO')),
+    CONSTRAINT chk_animais_temperamento   CHECK (temperamento IN ('CALMO', 'BRINCALHAO', 'AFETUOSO', 'PROTETOR', 'INDEPENDENTE')),
+    CONSTRAINT chk_animais_status         CHECK (status IN ('DISPONIVEL', 'ADOTADO', 'INATIVO'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_animais_status_data ON animais (status, data_criacao DESC);
+CREATE INDEX IF NOT EXISTS idx_animais_dono        ON animais (dono_id);
+
+COMMENT ON TABLE  animais               IS 'Animais anunciados para adoção por ONGs e usuários comuns';
+COMMENT ON COLUMN animais.dono_id       IS 'Quem anunciou — a cidade/UF exibidas no anúncio são as do perfil do dono';
+COMMENT ON COLUMN animais.idade_valor   IS 'Idade informada no cadastro, na unidade de idade_unidade (0-11 meses ou 1-30 anos)';
+COMMENT ON COLUMN animais.faixa_etaria  IS 'Calculada pela API ao salvar: < 12 meses FILHOTE, < 8 anos ADULTO, senão IDOSO';
+COMMENT ON COLUMN animais.resumo        IS 'Frase curta exibida no card da listagem';
+COMMENT ON COLUMN animais.status        IS 'DISPONIVEL, ADOTADO ou INATIVO (retirado do ar pelo dono — exclusão lógica)';
+
+-- ------------------------------------------------------------
+-- animal_fotos — até 4 fotos por animal, na ordem de exibição
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS animal_fotos (
+    animal_id  BIGINT   NOT NULL REFERENCES animais (id) ON DELETE CASCADE,
+    ordem      INTEGER  NOT NULL,
+    url        TEXT     NOT NULL,
+
+    PRIMARY KEY (animal_id, ordem)
+);
+
+COMMENT ON TABLE  animal_fotos       IS 'Fotos do anúncio; ordem 0 é a capa usada no card da listagem';
+COMMENT ON COLUMN animal_fotos.url   IS 'URL da imagem ou data URL comprimida no frontend (enquanto não há upload próprio)';
+
+-- ------------------------------------------------------------
+-- favoritos — animais salvos por cada usuário
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS favoritos (
+    id            BIGSERIAL  PRIMARY KEY,
+    usuario_id    BIGINT     NOT NULL REFERENCES usuarios (id) ON DELETE CASCADE,
+    animal_id     BIGINT     NOT NULL REFERENCES animais (id)  ON DELETE CASCADE,
+    data_criacao  TIMESTAMP  NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT uq_favoritos_usuario_animal UNIQUE (usuario_id, animal_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_favoritos_usuario ON favoritos (usuario_id, data_criacao DESC);
+
+COMMENT ON TABLE favoritos IS 'Animais favoritados pelos usuários — um registro por par usuário/animal';
+
 -- ============================================================
 -- Opcional: trazer as contas de teste do banco antigo (adocao_db)
 -- Rode no terminal, depois deste script:

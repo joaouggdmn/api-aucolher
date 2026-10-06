@@ -1,6 +1,6 @@
 # AUcolher API — Plataforma de Adoção de Animais
 
-API REST em Spring Boot 3 / Java 17 do AUcolher: cadastro, login e autenticação (tradicional + OAuth2 Google) de dois perfis de usuário, **ONG** e **Usuário Comum**, e edição do perfil ("Minha conta").
+API REST em Spring Boot 3 / Java 17 do AUcolher: cadastro, login e autenticação (tradicional + OAuth2 Google) de dois perfis de usuário, **ONG** e **Usuário Comum**, edição do perfil ("Minha conta"), anúncios de animais para adoção e favoritos.
 
 ## Stack
 
@@ -23,8 +23,21 @@ src/main/java/com/aucolher/api/
 │   ├── UsuarioRepository.java
 │   ├── entity/                             # Usuario, MembroEquipe, HorarioVisita, TipoUsuario, AuthProvider
 │   └── dto/                                # AtualizacaoPerfilDTO, UsuarioResponseDTO, MembroEquipeDTO, HorarioVisitaDTO
+├── animal/                                 # Anúncios de adoção
+│   ├── AnimalController.java
+│   ├── AnimalService.java                  # Regras: só o dono altera, ADOTADO é definitivo, inativo só o dono vê
+│   ├── AnimalRepository.java
+│   ├── AnimalSpecifications.java           # Monta o WHERE da listagem a partir dos filtros recebidos
+│   ├── entity/                             # Animal + enums (Especie, Porte, Sexo, Nivel, Temperamento, StatusAnimal...)
+│   └── dto/                                # AnimalRequestDTO, AnimalDetalheDTO, AnimalResumoDTO (card), AnimalFiltroDTO...
+├── favorito/                               # Animais favoritados por cada usuário
+│   ├── FavoritoController.java
+│   ├── FavoritoService.java
+│   ├── FavoritoRepository.java
+│   └── entity/Favorito.java
 ├── shared/                                 # Comum a todas as funcionalidades
-│   ├── exception/                          # Exceções de negócio, @RestControllerAdvice e ErroResponseDTO
+│   ├── dto/PaginaDTO.java                  # Formato padrão das respostas paginadas
+│   ├── exception/                          # Exceções (400, 401, 403, 404), @RestControllerAdvice e ErroResponseDTO
 │   └── validation/                         # Sanitizador (normalização nos records), FotoUrl, @AnoFundacao
 ├── config/SecurityConfig.java              # Regras do Spring Security, CSRF off, OAuth2 login
 └── security/
@@ -34,6 +47,7 @@ src/main/java/com/aucolher/api/
     ├── CustomOAuth2UserService.java        # Cria o usuário automaticamente no 1º login Google
     └── OAuth2AuthenticationSuccessHandler.java  # Devolve JWT em JSON após login Google
 sql/schema.sql                              # Script de criação do banco aucolher_db + tabelas
+src/test/java/...                           # Testes (JUnit 5 + Mockito + MockMvc)
 ```
 
 ## Como rodar
@@ -44,7 +58,7 @@ sql/schema.sql                              # Script de criação do banco aucol
 psql -U postgres -h localhost -f sql/schema.sql
 ```
 
-O script cria o banco `aucolher_db` (se ainda não existir) e as tabelas `usuarios`, `ong_equipe` e `ong_horarios_visita`. Banco criado por uma versão anterior do script? Rode-o de novo: os `ALTER TABLE ... IF NOT EXISTS` logo depois do `CREATE TABLE usuarios` acrescentam as colunas novas (ex: `ano_fundacao`) — sem elas a API não sobe, por causa do `ddl-auto=validate`. É uma cópia de `docs/script_banco_aucolher.sql` do frontend — mantenha os dois iguais. O Hibernate (`ddl-auto=update`) não cria o banco, só as tabelas, então rode o script antes de subir a API.
+O script cria o banco `aucolher_db` (se ainda não existir) e as tabelas `usuarios`, `ong_equipe`, `ong_horarios_visita`, `animais`, `animal_fotos` e `favoritos`. Todas usam `IF NOT EXISTS`, então rodar o script de novo num banco existente só acrescenta o que falta. Banco criado por uma versão anterior do script? Rode-o de novo: os `ALTER TABLE ... IF NOT EXISTS` logo depois do `CREATE TABLE usuarios` acrescentam as colunas novas (ex: `ano_fundacao`) — sem elas a API não sobe, por causa do `ddl-auto=validate`. É uma cópia de `docs/script_banco_aucolher.sql` do frontend — mantenha os dois iguais. Rode o script antes de subir a API: o Hibernate (`ddl-auto=validate`) não cria o banco nem as tabelas, só confere se elas batem com as entidades.
 
 ### 2. Variáveis de ambiente
 
@@ -69,6 +83,14 @@ mvn spring-boot:run
 ```
 
 A API sobe em `http://localhost:8080`.
+
+### 4. Testes
+
+```bash
+mvn test
+```
+
+Os testes não precisam de banco: as regras de negócio são testadas com o repositório simulado (Mockito) e as rotas com MockMvc.
 
 ## Endpoints
 
@@ -210,6 +232,97 @@ GET /oauth2/authorization/google
 ```
 Redirecione o usuário para essa URL no navegador. Após o consentimento, o Spring Security completa o fluxo OAuth2; no primeiro acesso, `CustomOAuth2UserService` cria automaticamente o registro em `usuarios` com `tipoUsuario = USUARIO_COMUM` e `provider = GOOGLE`. Em seguida, `OAuth2AuthenticationSuccessHandler` devolve o mesmo formato de JSON (token + usuário) dos logins tradicionais.
 
+### Animais
+
+Qualquer conta (ONG ou usuário comum) pode anunciar. A cidade/UF do animal são as do perfil de quem anuncia — preencha-as em `PUT /api/usuarios/me` antes, senão o cadastro responde 400.
+
+| Método e rota | Login | O que faz |
+|---|---|---|
+| `GET /api/animais` | não | Vitrine: só os `DISPONIVEL`, do mais recente para o mais antigo, com filtros e paginação |
+| `GET /api/animais/{id}` | não | Detalhes completos. Anúncio `INATIVO` só aparece para o dono (para os outros, 404) |
+| `POST /api/animais` | sim | Cadastra — responde 201 com o animal completo |
+| `PUT /api/animais/{id}` | dono | Edição completa (mesmo corpo do cadastro). Animal adotado não pode ser editado |
+| `PATCH /api/animais/{id}/status` | dono | `{ "status": "ADOTADO" }`, `"INATIVO"` ou `"DISPONIVEL"`. `ADOTADO` é definitivo |
+| `DELETE /api/animais/{id}` | dono | Tira do ar (exclusão lógica: vira `INATIVO`) — responde 204 |
+| `GET /api/animais/meus` | sim | Todos os anúncios da conta logada, em qualquer status |
+| `GET /api/usuarios/{id}/animais` | não | Os disponíveis de um perfil público |
+
+Quem não é dono recebe 403 nas rotas de alteração.
+
+**Cadastro / edição** (`POST` e `PUT`):
+```json
+{
+  "nome": "Thor",
+  "especie": "CACHORRO",
+  "raca": "Vira-lata",
+  "sexo": "MACHO",
+  "idadeValor": 3,
+  "idadeUnidade": "ANOS",
+  "porte": "GRANDE",
+  "vacinado": true,
+  "castrado": true,
+  "vermifugado": true,
+  "necessidadesEspeciais": false,
+  "nivelEnergia": "ALTO",
+  "temperamento": "PROTETOR",
+  "nivelIndependencia": "MODERADO",
+  "nivelVocalizacao": "MODERADO",
+  "bomComCriancas": true,
+  "bomComCaes": true,
+  "bomComGatos": false,
+  "adaptadoApartamento": false,
+  "resumo": "Protetor e brincalhão, pronto para uma nova aventura!",
+  "historia": "Thor foi resgatado ainda filhote...",
+  "fotos": ["data:image/jpeg;base64,...", "https://..."]
+}
+```
+
+Valores aceitos:
+
+| Campo | Valores |
+|---|---|
+| `especie` | `CACHORRO`, `GATO`, `OUTRO` |
+| `sexo` | `MACHO`, `FEMEA` |
+| `porte` | `PEQUENO`, `MEDIO`, `GRANDE` |
+| `idadeUnidade` | `MESES` (0 a 11) ou `ANOS` (1 a 30) |
+| `nivelEnergia`, `nivelIndependencia`, `nivelVocalizacao` | `BAIXO`, `MODERADO`, `ALTO` |
+| `temperamento` | `CALMO`, `BRINCALHAO`, `AFETUOSO`, `PROTETOR`, `INDEPENDENTE` |
+| `fotos` | de 1 a 4, URL http(s) ou data URL de imagem (mesmas regras da foto de perfil); a primeira é a capa |
+
+Os itens de saúde (`vacinado`, `castrado`, `vermifugado`, `necessidadesEspeciais`) são opcionais e valem `false` quando não vêm. `faixaEtaria` (`FILHOTE`, `ADULTO`, `IDOSO`) não é enviada: a API calcula pela idade (menos de 1 ano é filhote; a partir de 8 anos, idoso).
+
+A resposta do cadastro, da edição e de `GET /api/animais/{id}` traz esses campos mais `id`, `faixaEtaria`, `status`, `cidade`, `estado`, `dono` (`id`, `nome`, `fotoUrl`, `tipoUsuario`, `isVerificado`), `dataCriacao` e `dataAtualizacao`.
+
+**Listagem** — filtros opcionais na query string; os de múltipla escolha podem se repetir:
+```
+GET /api/animais?especie=CACHORRO&especie=GATO&porte=PEQUENO&cidade=Araranguá&page=0&size=12
+```
+
+Filtros: `busca` (nome, raça ou cidade), `especie`, `porte`, `sexo`, `faixaEtaria`, `nivelEnergia`, `temperamento`, `necessidadesEspeciais=true`, `cidade`, `estado`. Paginação: `page` começa em 0; `size` padrão 12, máximo 50.
+
+```json
+{
+  "conteudo": [ { "id": 1, "nome": "Thor", "fotoCapa": "data:image/jpeg;base64,...", "cidade": "Araranguá", "...": "..." } ],
+  "pagina": 0,
+  "tamanho": 12,
+  "totalElementos": 1,
+  "totalPaginas": 1
+}
+```
+
+Os cards (listagem, meus animais, perfil e favoritos) trazem só a `fotoCapa` e não trazem a `historia` — a página de detalhes busca o animal completo.
+
+### Favoritos
+
+Todas exigem login.
+
+| Método e rota | O que faz |
+|---|---|
+| `GET /api/favoritos` | Cards dos animais favoritados, do mais recente para o mais antigo. Inativos somem; adotados continuam, com `status: ADOTADO` |
+| `GET /api/favoritos/ids` | Só os ids — para marcar os corações nos cards |
+| `PUT /api/favoritos/{animalId}` | Favorita. Repetir não duplica — responde 204 |
+| `DELETE /api/favoritos/{animalId}` | Desfavorita — responde 204 |
+
 ## Decisões de projeto
 
 - **JWT stateless**: como o requisito pede desativação de CSRF e uma API REST pura, optei por sessão stateless com JWT em vez de sessão HTTP tradicional — é o padrão de mercado para esse tipo de API e evita problemas de CORS/cookies com clientes SPA/mobile.
@@ -218,4 +331,8 @@ Redirecione o usuário para essa URL no navegador. Após o consentimento, o Spri
 - **CNPJ pelo Bean Validation**: `@CNPJ` do Hibernate Validator confere os dígitos verificadores; um `@Pattern` extra barra sequências repetidas (`00.000.000/0000-00`), que o `@CNPJ` sozinho aceita.
 - **JWT mínimo**: o token carrega apenas o e-mail (subject) e a validade. Papel e id não viram claim para não circular desatualizados — quem responde por eles é o banco, relido a cada requisição autenticada.
 - **`ddl-auto=validate`**: o schema vem do `sql/schema.sql`; o Hibernate só confere se o banco bate com as entidades, em vez de alterar tabelas sozinho.
-- **Constraints de banco** (`CHECK`) reforçam no schema.sql as mesmas regras já validadas na aplicação (ONG exige CNPJ; contas LOCAL exigem senha) como camada extra de integridade.
+- **Constraints de banco** (`CHECK`) reforçam no schema.sql as mesmas regras já validadas na aplicação (ONG exige CNPJ; contas LOCAL exigem senha; valores dos enums dos animais) como camada extra de integridade.
+- **Localização do animal = a do dono**: `animais` não tem cidade/UF; a listagem filtra pelo endereço do perfil de quem anunciou. Filtro por distância ("perto de mim") fica para quando `usuarios` tiver latitude/longitude.
+- **Exclusão lógica de animais**: `DELETE` só muda o status para `INATIVO`, preservando o histórico (favoritos e, no futuro, pedidos de adoção).
+- **Cards leves**: a listagem busca só a foto de capa (numa consulta única) e carrega o dono junto, então uma página custa duas consultas SQL, com payload pequeno mesmo com fotos em data URL.
+- **Favoritar é idempotente no banco**: `INSERT ... ON CONFLICT DO NOTHING` garante um favorito por par usuário/animal mesmo com cliques simultâneos.
