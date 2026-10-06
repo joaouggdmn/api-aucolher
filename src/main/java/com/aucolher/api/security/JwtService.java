@@ -28,18 +28,18 @@ public class JwtService {
     private static final Logger log = LoggerFactory.getLogger(JwtService.class);
 
     /** HS256 exige pelo menos 256 bits de chave. */
-    private static final int TAMANHO_MINIMO_DO_SEGREDO = 32;
+    private static final int MIN_SECRET_LENGTH = 32;
 
-    private final SecretKey chave;
+    private final SecretKey key;
     private final long expirationMs;
 
     public JwtService(@Value("${app.jwt.secret:}") String secret,
                       @Value("${app.jwt.expiration-ms}") long expirationMs) {
-        this.chave = construirChave(secret);
+        this.key = buildKey(secret);
         this.expirationMs = expirationMs;
     }
 
-    private static SecretKey construirChave(String secret) {
+    private static SecretKey buildKey(String secret) {
         if (secret == null || secret.isBlank()) {
             log.warn("JWT_SECRET não definido: gerando uma chave aleatória válida só para esta execução. " +
                     "Os tokens emitidos param de valer quando a API reinicia — defina JWT_SECRET no ambiente.");
@@ -48,47 +48,47 @@ public class JwtService {
 
         byte[] bytes = secret.getBytes(StandardCharsets.UTF_8);
 
-        if (bytes.length < TAMANHO_MINIMO_DO_SEGREDO) {
+        if (bytes.length < MIN_SECRET_LENGTH) {
             throw new IllegalStateException(
-                    "app.jwt.secret precisa ter no mínimo " + TAMANHO_MINIMO_DO_SEGREDO + " caracteres");
+                    "app.jwt.secret precisa ter no mínimo " + MIN_SECRET_LENGTH + " caracteres");
         }
 
         return Keys.hmacShaKeyFor(bytes);
     }
 
-    public String gerarToken(String email) {
-        Date agora = new Date();
-        Date expiracao = new Date(agora.getTime() + expirationMs);
+    public String generateToken(String email) {
+        Date now = new Date();
+        Date expiration = new Date(now.getTime() + expirationMs);
 
         return Jwts.builder()
                 .subject(email)
-                .issuedAt(agora)
-                .expiration(expiracao)
-                .signWith(chave)
+                .issuedAt(now)
+                .expiration(expiration)
+                .signWith(key)
                 .compact();
     }
 
-    public String extrairEmail(String token) {
-        return extrairClaim(token, Claims::getSubject);
+    public String extractEmail(String token) {
+        return extractClaim(token, Claims::getSubject);
     }
 
-    public boolean tokenValido(String token, String email) {
-        String emailToken = extrairEmail(token);
-        return emailToken.equals(email) && !tokenExpirado(token);
+    public boolean isTokenValid(String token, String email) {
+        String tokenEmail = extractEmail(token);
+        return tokenEmail.equals(email) && !isTokenExpired(token);
     }
 
-    private boolean tokenExpirado(String token) {
-        return extrairClaim(token, Claims::getExpiration).before(new Date());
+    private boolean isTokenExpired(String token) {
+        return extractClaim(token, Claims::getExpiration).before(new Date());
     }
 
-    private <T> T extrairClaim(String token, Function<Claims, T> resolver) {
-        Claims claims = extrairTodasClaims(token);
+    private <T> T extractClaim(String token, Function<Claims, T> resolver) {
+        Claims claims = extractAllClaims(token);
         return resolver.apply(claims);
     }
 
-    private Claims extrairTodasClaims(String token) {
+    private Claims extractAllClaims(String token) {
         return Jwts.parser()
-                .verifyWith(chave)
+                .verifyWith(key)
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();

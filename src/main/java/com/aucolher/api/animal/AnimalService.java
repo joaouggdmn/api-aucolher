@@ -10,8 +10,8 @@ import com.aucolher.api.shared.dto.PageDTO;
 import com.aucolher.api.shared.exception.ForbiddenException;
 import com.aucolher.api.shared.exception.BusinessException;
 import com.aucolher.api.shared.exception.ResourceNotFoundException;
-import com.aucolher.api.usuario.UsuarioRepository;
-import com.aucolher.api.usuario.entity.Usuario;
+import com.aucolher.api.user.UserRepository;
+import com.aucolher.api.user.entity.User;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -34,7 +34,7 @@ public class AnimalService {
     static final int TAMANHO_PAGINA_MAXIMO = 50;
 
     private final AnimalRepository animalRepository;
-    private final UsuarioRepository usuarioRepository;
+    private final UserRepository userRepository;
 
     /**
      * Qualquer conta (ONG ou usuário comum) pode anunciar, desde que tenha
@@ -42,10 +42,10 @@ public class AnimalService {
      */
     @Transactional
     public AnimalDetalheDTO cadastrar(String emailDono, AnimalRequestDTO dto) {
-        Usuario dono = usuarioRepository.findByEmail(emailDono)
+        User dono = userRepository.findByEmail(emailDono)
                 .orElseThrow(() -> new BusinessException("Usuário não encontrado"));
 
-        if (dono.getCidade() == null || dono.getEstado() == null) {
+        if (dono.getCity() == null || dono.getState() == null) {
             throw new BusinessException("Complete a cidade e a UF do seu perfil antes de anunciar um animal");
         }
 
@@ -95,7 +95,7 @@ public class AnimalService {
     /** Animais disponíveis de um perfil público. */
     @Transactional(readOnly = true)
     public List<AnimalResumoDTO> listarDoPerfil(Long usuarioId) {
-        if (!usuarioRepository.existsById(usuarioId)) {
+        if (!userRepository.existsById(usuarioId)) {
             throw new ResourceNotFoundException("Usuário não encontrado");
         }
         return resumir(animalRepository.findByDonoIdAndStatusOrderByDataCriacaoDesc(usuarioId, StatusAnimal.DISPONIVEL));

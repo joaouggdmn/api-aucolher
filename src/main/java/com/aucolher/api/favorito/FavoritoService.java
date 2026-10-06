@@ -8,8 +8,8 @@ import com.aucolher.api.animal.entity.StatusAnimal;
 import com.aucolher.api.favorito.entity.Favorito;
 import com.aucolher.api.shared.exception.BusinessException;
 import com.aucolher.api.shared.exception.ResourceNotFoundException;
-import com.aucolher.api.usuario.UsuarioRepository;
-import com.aucolher.api.usuario.entity.Usuario;
+import com.aucolher.api.user.UserRepository;
+import com.aucolher.api.user.entity.User;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,7 +28,7 @@ public class FavoritoService {
     private final FavoritoRepository favoritoRepository;
     private final AnimalRepository animalRepository;
     private final AnimalService animalService;
-    private final UsuarioRepository usuarioRepository;
+    private final UserRepository userRepository;
 
     @Transactional(readOnly = true)
     public List<AnimalResumoDTO> listar(String email) {
@@ -62,8 +62,8 @@ public class FavoritoService {
         favoritoRepository.desfavoritar(buscarUsuario(email).getId(), animalId);
     }
 
-    private Usuario buscarUsuario(String email) {
-        return usuarioRepository.findByEmail(email)
+    private User buscarUsuario(String email) {
+        return userRepository.findByEmail(email)
                 .orElseThrow(() -> new BusinessException("Usuário não encontrado"));
     }
 }

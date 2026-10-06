@@ -3,7 +3,7 @@ package com.aucolher.api.animal;
 import com.aucolher.api.animal.dto.AnimalFiltroDTO;
 import com.aucolher.api.animal.entity.Animal;
 import com.aucolher.api.animal.entity.StatusAnimal;
-import com.aucolher.api.usuario.entity.Usuario;
+import com.aucolher.api.user.entity.User;
 import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.Predicate;
@@ -42,13 +42,13 @@ final class AnimalSpecifications {
             }
 
             // Cidade e UF são as do dono (o animal está onde o dono está)
-            Join<Animal, Usuario> dono = root.join("dono");
+            Join<Animal, User> dono = root.join("dono");
 
             if (filtro.cidade() != null) {
-                condicoes.add(cb.equal(cb.lower(dono.get("cidade")), filtro.cidade().toLowerCase(Locale.ROOT)));
+                condicoes.add(cb.equal(cb.lower(dono.get("city")), filtro.cidade().toLowerCase(Locale.ROOT)));
             }
             if (filtro.estado() != null) {
-                condicoes.add(cb.equal(dono.get("estado"), filtro.estado()));
+                condicoes.add(cb.equal(dono.get("state"), filtro.estado()));
             }
 
             if (filtro.busca() != null) {
@@ -56,7 +56,7 @@ final class AnimalSpecifications {
                 condicoes.add(cb.or(
                         cb.like(cb.lower(root.get("nome")), termo, '\\'),
                         cb.like(cb.lower(root.get("raca")), termo, '\\'),
-                        cb.like(cb.lower(dono.get("cidade")), termo, '\\')
+                        cb.like(cb.lower(dono.get("city")), termo, '\\')
                 ));
             }
 

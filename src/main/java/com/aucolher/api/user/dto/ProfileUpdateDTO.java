@@ -1,4 +1,4 @@
-package com.aucolher.api.usuario.dto;
+package com.aucolher.api.user.dto;
 
 import com.aucolher.api.shared.validation.FoundedYear;
 import com.aucolher.api.shared.validation.PhotoUrl;
@@ -17,15 +17,15 @@ import java.util.List;
  * É uma substituição completa (PUT): campo opcional que não vier é apagado.
  * Mesma normalização do cadastro (ver {@link Sanitizer}).
  */
-public record AtualizacaoPerfilDTO(
+public record ProfileUpdateDTO(
 
         @NotBlank(message = "O nome é obrigatório")
         @Size(min = 2, max = 150, message = "O nome deve ter entre 2 e 150 caracteres")
-        String nome,
+        String name,
 
         @Size(max = PhotoUrl.MAX_LENGTH, message = "A foto é grande demais")
         @Pattern(regexp = PhotoUrl.FORMAT, message = "Foto em formato inválido")
-        String fotoUrl,
+        String photoUrl,
 
         @Size(max = 500, message = "A bio deve ter no máximo 500 caracteres")
         String bio,
@@ -34,7 +34,7 @@ public record AtualizacaoPerfilDTO(
 
         @Email(message = "E-mail institucional em formato inválido")
         @Size(max = 150, message = "O e-mail institucional deve ter no máximo 150 caracteres")
-        String emailInstitucional,
+        String institutionalEmail,
 
         @Pattern(regexp = "^[A-Za-z0-9._]{1,30}$", message = "Usuário do Instagram inválido")
         String instagram,
@@ -50,15 +50,15 @@ public record AtualizacaoPerfilDTO(
         String facebook,
 
         @FoundedYear
-        Integer anoFundacao,
+        Integer foundedYear,
 
         @Valid
         @Size(max = 20, message = "A equipe pode ter no máximo 20 integrantes")
-        List<MembroEquipeDTO> equipe,
+        List<TeamMemberDTO> team,
 
         @Valid
         @Size(max = 20, message = "Cadastre no máximo 20 faixas de horário de visita")
-        List<HorarioVisitaDTO> horariosVisita,
+        List<VisitingHourDTO> visitingHours,
 
         // ===================== Endereço =====================
         // Obrigatório para ONG (conferido na Service); o usuário comum usa só CEP, cidade e UF
@@ -67,40 +67,40 @@ public record AtualizacaoPerfilDTO(
         String cep,
 
         @Size(max = 150, message = "O logradouro deve ter no máximo 150 caracteres")
-        String logradouro,
+        String street,
 
         @Size(max = 20, message = "O número deve ter no máximo 20 caracteres")
-        String numero,
+        String number,
 
         @Size(max = 100, message = "O complemento deve ter no máximo 100 caracteres")
-        String complemento,
+        String complement,
 
         @Size(max = 100, message = "O bairro deve ter no máximo 100 caracteres")
-        String bairro,
+        String district,
 
         @Size(max = 100, message = "A cidade deve ter no máximo 100 caracteres")
-        String cidade,
+        String city,
 
         @Pattern(regexp = "^[A-Z]{2}$", message = "Estado deve ser a sigla da UF (ex: SC)")
-        String estado
+        String state
 ) {
 
-    public AtualizacaoPerfilDTO {
-        nome = Sanitizer.text(nome);
-        fotoUrl = Sanitizer.text(fotoUrl);
+    public ProfileUpdateDTO {
+        name = Sanitizer.text(name);
+        photoUrl = Sanitizer.text(photoUrl);
         bio = Sanitizer.text(bio);
-        emailInstitucional = Sanitizer.text(emailInstitucional);
+        institutionalEmail = Sanitizer.text(institutionalEmail);
         instagram = Sanitizer.withoutAt(instagram);
         twitter = Sanitizer.withoutAt(twitter);
         facebook = Sanitizer.withProtocol(facebook);
-        equipe = equipe == null ? List.of() : equipe;
-        horariosVisita = horariosVisita == null ? List.of() : horariosVisita;
+        team = team == null ? List.of() : team;
+        visitingHours = visitingHours == null ? List.of() : visitingHours;
         cep = Sanitizer.digitsOnly(cep);
-        logradouro = Sanitizer.text(logradouro);
-        numero = Sanitizer.text(numero);
-        complemento = Sanitizer.text(complemento);
-        bairro = Sanitizer.text(bairro);
-        cidade = Sanitizer.text(cidade);
-        estado = Sanitizer.uppercase(estado);
+        street = Sanitizer.text(street);
+        number = Sanitizer.text(number);
+        complement = Sanitizer.text(complement);
+        district = Sanitizer.text(district);
+        city = Sanitizer.text(city);
+        state = Sanitizer.uppercase(state);
     }
 }

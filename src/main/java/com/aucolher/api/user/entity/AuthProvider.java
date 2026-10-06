@@ -1,4 +1,4 @@
-package com.aucolher.api.usuario.entity;
+package com.aucolher.api.user.entity;
 
 /**
  * Origem da autenticação do usuário: cadastro tradicional (LOCAL)

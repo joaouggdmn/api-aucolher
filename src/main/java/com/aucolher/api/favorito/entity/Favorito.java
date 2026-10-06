@@ -1,7 +1,7 @@
 package com.aucolher.api.favorito.entity;
 
 import com.aucolher.api.animal.entity.Animal;
-import com.aucolher.api.usuario.entity.Usuario;
+import com.aucolher.api.user.entity.User;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -27,7 +27,7 @@ public class Favorito {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "usuario_id", nullable = false)
-    private Usuario usuario;
+    private User usuario;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "animal_id", nullable = false)
