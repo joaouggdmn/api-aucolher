@@ -78,8 +78,8 @@ public record AnimalDetalheDTO(
                 animal.getHistoria(),
                 animal.getStatus(),
                 List.copyOf(animal.getFotos()),
-                animal.getDono().getCidade(),
-                animal.getDono().getEstado(),
+                animal.getDono().getCity(),
+                animal.getDono().getState(),
                 DonoAnimalDTO.from(animal.getDono()),
                 animal.getDataCriacao(),
                 animal.getDataAtualizacao()

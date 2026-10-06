@@ -1,8 +1,8 @@
 package com.aucolher.api.security;
 
 import com.aucolher.api.auth.dto.AuthResponseDTO;
-import com.aucolher.api.usuario.UsuarioService;
-import com.aucolher.api.usuario.dto.UsuarioResponseDTO;
+import com.aucolher.api.user.UserService;
+import com.aucolher.api.user.dto.UserResponseDTO;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -24,7 +24,7 @@ import java.io.IOException;
 @RequiredArgsConstructor
 public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccessHandler {
 
-    private final UsuarioService usuarioService;
+    private final UserService userService;
     private final JwtService jwtService;
     // O ObjectMapper do Spring já vem com o módulo de datas do Java 8 — um
     // new ObjectMapper() puro falha ao serializar o dataCriacao (LocalDateTime)
@@ -38,12 +38,12 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
         String email = oAuth2User.getAttribute("email");
 
         // O CustomOAuth2UserService já criou a conta no primeiro acesso
-        UsuarioResponseDTO usuario = usuarioService.buscarPerfil(email);
+        UserResponseDTO user = userService.getProfile(email);
 
-        String token = jwtService.gerarToken(usuario.email());
+        String token = jwtService.generateToken(user.email());
 
         // Mesmo payload do login tradicional (POST /api/auth/login)
-        AuthResponseDTO body = new AuthResponseDTO(token, usuario);
+        AuthResponseDTO body = new AuthResponseDTO(token, user);
 
         response.setContentType("application/json;charset=UTF-8");
         response.setStatus(HttpServletResponse.SC_OK);

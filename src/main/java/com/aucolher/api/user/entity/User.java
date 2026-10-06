@@ -1,4 +1,4 @@
-package com.aucolher.api.usuario.entity;
+package com.aucolher.api.user.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
@@ -9,7 +9,7 @@ import java.util.List;
 
 /**
  * Entidade que representa tanto ONGs quanto Usuários Comuns.
- * O campo `tipoUsuario` define o perfil, e `provider` define a
+ * O campo `userType` define o perfil, e `provider` define a
  * origem da autenticação (cadastro tradicional ou OAuth2/Google).
  *
  * Campos de perfil seguem a seção 6 de docs/regras-de-negocio.md:
@@ -18,20 +18,20 @@ import java.util.List;
  * O endereço é obrigatório para ONG e opcional para o usuário comum.
  */
 @Entity
-@Table(name = "usuarios")
+@Table(name = "users")
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class Usuario {
+public class User {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @Column(nullable = false, length = 150)
-    private String nome;
+    private String name;
 
     @Column(nullable = false, unique = true, length = 150)
     private String email;
@@ -42,18 +42,18 @@ public class Usuario {
      * usuários nunca informam senha própria.
      */
     @Column(length = 255)
-    private String senha;
+    private String password;
 
     /**
-     * Obrigatório apenas para tipoUsuario = ONG.
+     * Obrigatório apenas para userType = NGO.
      * Armazenado apenas com dígitos (sem máscara).
      */
     @Column(unique = true, length = 14)
     private String cnpj;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "tipo_usuario", nullable = false, length = 20)
-    private TipoUsuario tipoUsuario;
+    @Column(name = "user_type", nullable = false, length = 20)
+    private UserType userType;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
@@ -62,16 +62,16 @@ public class Usuario {
 
     @Column(nullable = false)
     @Builder.Default
-    private Boolean ativo = true;
+    private Boolean active = true;
 
-    @Column(name = "data_criacao", nullable = false, updatable = false)
-    private LocalDateTime dataCriacao;
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
 
     // ===================== Perfil (comum e ONG) =====================
 
     /** URL do avatar (ou data URL da imagem comprimida, enquanto não há upload próprio). */
-    @Column(name = "foto_url", columnDefinition = "TEXT")
-    private String fotoUrl;
+    @Column(name = "photo_url", columnDefinition = "TEXT")
+    private String photoUrl;
 
     @Column(columnDefinition = "TEXT")
     private String bio;
@@ -79,13 +79,13 @@ public class Usuario {
     // ===================== Perfil de ONG =====================
 
     /** Contato público da ONG — pode ser diferente do e-mail de login. */
-    @Column(name = "email_institucional", length = 150)
-    private String emailInstitucional;
+    @Column(name = "institutional_email", length = 150)
+    private String institutionalEmail;
 
     /** Selo de "verificada", concedido quando o admin aprova a ONG. */
-    @Column(name = "is_verificado", nullable = false)
+    @Column(name = "is_verified", nullable = false)
     @Builder.Default
-    private Boolean verificado = false;
+    private Boolean verified = false;
 
     /** Apenas o nome de usuário, sem @. */
     @Column(length = 30)
@@ -100,20 +100,20 @@ public class Usuario {
     private String facebook;
 
     /** Opcional — exibido no perfil como "Fundada em [ano]". Sempre nulo para usuário comum. */
-    @Column(name = "ano_fundacao")
-    private Integer anoFundacao;
+    @Column(name = "founded_year")
+    private Integer foundedYear;
 
     @ElementCollection
-    @CollectionTable(name = "ong_equipe", joinColumns = @JoinColumn(name = "usuario_id"))
-    @OrderColumn(name = "ordem")
+    @CollectionTable(name = "ngo_team", joinColumns = @JoinColumn(name = "user_id"))
+    @OrderColumn(name = "sort_order")
     @Builder.Default
-    private List<MembroEquipe> equipe = new ArrayList<>();
+    private List<TeamMember> team = new ArrayList<>();
 
     @ElementCollection
-    @CollectionTable(name = "ong_horarios_visita", joinColumns = @JoinColumn(name = "usuario_id"))
-    @OrderColumn(name = "ordem")
+    @CollectionTable(name = "ngo_visiting_hours", joinColumns = @JoinColumn(name = "user_id"))
+    @OrderColumn(name = "sort_order")
     @Builder.Default
-    private List<HorarioVisita> horariosVisita = new ArrayList<>();
+    private List<VisitingHour> visitingHours = new ArrayList<>();
 
     // ===================== Endereço =====================
 
@@ -122,26 +122,26 @@ public class Usuario {
     private String cep;
 
     @Column(length = 150)
-    private String logradouro;
+    private String street;
 
     @Column(length = 20)
-    private String numero;
+    private String number;
 
     @Column(length = 100)
-    private String complemento;
+    private String complement;
 
     @Column(length = 100)
-    private String bairro;
+    private String district;
 
     @Column(length = 100)
-    private String cidade;
+    private String city;
 
     /** Sigla da UF, ex: "SC". */
     @Column(length = 2)
-    private String estado;
+    private String state;
 
     @PrePersist
-    protected void aoPersistir() {
-        this.dataCriacao = LocalDateTime.now();
+    protected void onPersist() {
+        this.createdAt = LocalDateTime.now();
     }
 }

@@ -64,8 +64,8 @@ public record AnimalResumoDTO(
                 animal.getResumo(),
                 animal.getStatus(),
                 fotoCapa,
-                animal.getDono().getCidade(),
-                animal.getDono().getEstado(),
+                animal.getDono().getCity(),
+                animal.getDono().getState(),
                 DonoAnimalDTO.from(animal.getDono()),
                 animal.getDataCriacao()
         );

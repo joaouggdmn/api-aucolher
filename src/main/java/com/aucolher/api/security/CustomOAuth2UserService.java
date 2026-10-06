@@ -1,9 +1,9 @@
 package com.aucolher.api.security;
 
-import com.aucolher.api.usuario.UsuarioRepository;
-import com.aucolher.api.usuario.entity.AuthProvider;
-import com.aucolher.api.usuario.entity.TipoUsuario;
-import com.aucolher.api.usuario.entity.Usuario;
+import com.aucolher.api.user.UserRepository;
+import com.aucolher.api.user.entity.AuthProvider;
+import com.aucolher.api.user.entity.UserType;
+import com.aucolher.api.user.entity.User;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.oauth2.client.userinfo.DefaultOAuth2UserService;
 import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest;
@@ -13,36 +13,36 @@ import org.springframework.stereotype.Service;
 
 /**
  * Executado a cada login OAuth2 (Google). Se for o primeiro acesso do
- * e-mail, cria automaticamente um registro em `usuarios` com perfil
- * USUARIO_COMUM, como exigido pelo requisito 3.3.
+ * e-mail, cria automaticamente um registro em `users` com perfil
+ * PERSON, como exigido pelo requisito 3.3.
  */
 @Service
 @RequiredArgsConstructor
 public class CustomOAuth2UserService extends DefaultOAuth2UserService {
 
-    private final UsuarioRepository usuarioRepository;
+    private final UserRepository userRepository;
 
     @Override
     public OAuth2User loadUser(OAuth2UserRequest userRequest) throws OAuth2AuthenticationException {
         OAuth2User oAuth2User = super.loadUser(userRequest);
 
         String email = oAuth2User.getAttribute("email");
-        String nome = oAuth2User.getAttribute("name");
+        String name = oAuth2User.getAttribute("name");
 
         if (email == null) {
             throw new OAuth2AuthenticationException("Não foi possível obter o e-mail da conta Google");
         }
 
-        usuarioRepository.findByEmail(email).orElseGet(() -> {
-            Usuario novoUsuario = Usuario.builder()
-                    .nome(nome != null ? nome : email)
+        userRepository.findByEmail(email).orElseGet(() -> {
+            User newUser = User.builder()
+                    .name(name != null ? name : email)
                     .email(email)
-                    .senha(null)
-                    .tipoUsuario(TipoUsuario.USUARIO_COMUM)
+                    .password(null)
+                    .userType(UserType.PERSON)
                     .provider(AuthProvider.GOOGLE)
-                    .ativo(true)
+                    .active(true)
                     .build();
-            return usuarioRepository.save(novoUsuario);
+            return userRepository.save(newUser);
         });
 
         return oAuth2User;

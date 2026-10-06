@@ -1,4 +1,4 @@
-package com.aucolher.api.usuario.entity;
+package com.aucolher.api.user.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;
@@ -13,11 +13,11 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-public class HorarioVisita {
+public class VisitingHour {
 
     @Column(nullable = false, length = 80)
-    private String dias;
+    private String days;
 
     @Column(nullable = false, length = 80)
-    private String horario;
+    private String hours;
 }

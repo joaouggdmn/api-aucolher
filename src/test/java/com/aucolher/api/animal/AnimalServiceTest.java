@@ -5,9 +5,9 @@ import com.aucolher.api.animal.entity.*;
 import com.aucolher.api.shared.exception.ForbiddenException;
 import com.aucolher.api.shared.exception.BusinessException;
 import com.aucolher.api.shared.exception.ResourceNotFoundException;
-import com.aucolher.api.usuario.UsuarioRepository;
-import com.aucolher.api.usuario.entity.TipoUsuario;
-import com.aucolher.api.usuario.entity.Usuario;
+import com.aucolher.api.user.UserRepository;
+import com.aucolher.api.user.entity.UserType;
+import com.aucolher.api.user.entity.User;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -33,16 +33,16 @@ class AnimalServiceTest {
     private AnimalRepository animalRepository;
 
     @Mock
-    private UsuarioRepository usuarioRepository;
+    private UserRepository userRepository;
 
     @InjectMocks
     private AnimalService animalService;
 
     @Test
     void cadastroExigeCidadeEUfNoPerfilDoDono() {
-        Usuario semEndereco = usuario(1L, EMAIL_DONO);
-        semEndereco.setCidade(null);
-        when(usuarioRepository.findByEmail(EMAIL_DONO)).thenReturn(Optional.of(semEndereco));
+        User semEndereco = usuario(1L, EMAIL_DONO);
+        semEndereco.setCity(null);
+        when(userRepository.findByEmail(EMAIL_DONO)).thenReturn(Optional.of(semEndereco));
 
         assertThatThrownBy(() -> animalService.cadastrar(EMAIL_DONO, requestValido()))
                 .isInstanceOf(BusinessException.class)
@@ -52,8 +52,8 @@ class AnimalServiceTest {
 
     @Test
     void cadastroGravaOAnimalComODonoEAsFotosNaOrdem() {
-        Usuario dono = usuario(1L, EMAIL_DONO);
-        when(usuarioRepository.findByEmail(EMAIL_DONO)).thenReturn(Optional.of(dono));
+        User dono = usuario(1L, EMAIL_DONO);
+        when(userRepository.findByEmail(EMAIL_DONO)).thenReturn(Optional.of(dono));
         when(animalRepository.save(any(Animal.class))).thenAnswer(chamada -> chamada.getArgument(0));
 
         var resposta = animalService.cadastrar(EMAIL_DONO, requestValido());
@@ -110,7 +110,7 @@ class AnimalServiceTest {
 
     @Test
     void perfilInexistenteDa404() {
-        when(usuarioRepository.existsById(99L)).thenReturn(false);
+        when(userRepository.existsById(99L)).thenReturn(false);
 
         assertThatThrownBy(() -> animalService.listarDoPerfil(99L))
                 .isInstanceOf(ResourceNotFoundException.class);
@@ -118,14 +118,14 @@ class AnimalServiceTest {
 
     // ===================== Dados de teste =====================
 
-    private static Usuario usuario(Long id, String email) {
-        return Usuario.builder()
+    private static User usuario(Long id, String email) {
+        return User.builder()
                 .id(id)
-                .nome("ONG Teste")
+                .name("ONG Teste")
                 .email(email)
-                .tipoUsuario(TipoUsuario.ONG)
-                .cidade("Araranguá")
-                .estado("SC")
+                .userType(UserType.NGO)
+                .city("Araranguá")
+                .state("SC")
                 .build();
     }
 

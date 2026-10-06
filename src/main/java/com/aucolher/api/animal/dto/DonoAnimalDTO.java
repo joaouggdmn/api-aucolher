@@ -1,7 +1,7 @@
 package com.aucolher.api.animal.dto;
 
-import com.aucolher.api.usuario.entity.TipoUsuario;
-import com.aucolher.api.usuario.entity.Usuario;
+import com.aucolher.api.user.entity.UserType;
+import com.aucolher.api.user.entity.User;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 /**
@@ -13,11 +13,11 @@ public record DonoAnimalDTO(
         Long id,
         String nome,
         String fotoUrl,
-        TipoUsuario tipoUsuario,
+        UserType tipoUsuario,
         @JsonProperty("isVerificado") Boolean verificado
 ) {
 
-    public static DonoAnimalDTO from(Usuario dono) {
-        return new DonoAnimalDTO(dono.getId(), dono.getNome(), dono.getFotoUrl(), dono.getTipoUsuario(), dono.getVerificado());
+    public static DonoAnimalDTO from(User dono) {
+        return new DonoAnimalDTO(dono.getId(), dono.getName(), dono.getPhotoUrl(), dono.getUserType(), dono.getVerified());
     }
 }

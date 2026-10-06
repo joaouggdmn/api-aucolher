@@ -1,6 +1,6 @@
 package com.aucolher.api.animal.entity;
 
-import com.aucolher.api.usuario.entity.Usuario;
+import com.aucolher.api.user.entity.User;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -30,7 +30,7 @@ public class Animal {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "dono_id", nullable = false)
-    private Usuario dono;
+    private User dono;
 
     // ===================== Dados básicos =====================
 

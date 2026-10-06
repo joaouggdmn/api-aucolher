@@ -1,8 +1,8 @@
 package com.aucolher.api.auth;
 
 import com.aucolher.api.auth.dto.AuthResponseDTO;
-import com.aucolher.api.auth.dto.CadastroOngDTO;
-import com.aucolher.api.auth.dto.CadastroUserDTO;
+import com.aucolher.api.auth.dto.NgoRegistrationDTO;
+import com.aucolher.api.auth.dto.PersonRegistrationDTO;
 import com.aucolher.api.auth.dto.LoginDTO;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -17,22 +17,22 @@ public class AuthController {
 
     private final AuthService authService;
 
-    @PostMapping("/register/ong")
-    public ResponseEntity<AuthResponseDTO> cadastrarOng(@Valid @RequestBody CadastroOngDTO dto) {
-        AuthResponseDTO resposta = authService.registrarOng(dto);
-        return ResponseEntity.status(HttpStatus.CREATED).body(resposta);
+    @PostMapping("/register/ngo")
+    public ResponseEntity<AuthResponseDTO> registerNgo(@Valid @RequestBody NgoRegistrationDTO dto) {
+        AuthResponseDTO response = authService.registerNgo(dto);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
-    @PostMapping("/register/user")
-    public ResponseEntity<AuthResponseDTO> cadastrarUsuario(@Valid @RequestBody CadastroUserDTO dto) {
-        AuthResponseDTO resposta = authService.registrarUsuarioComum(dto);
-        return ResponseEntity.status(HttpStatus.CREATED).body(resposta);
+    @PostMapping("/register/person")
+    public ResponseEntity<AuthResponseDTO> registerPerson(@Valid @RequestBody PersonRegistrationDTO dto) {
+        AuthResponseDTO response = authService.registerPerson(dto);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
-    /** Rota única de login — vale para ONG e usuário comum; o tipo vem em usuario.tipoUsuario. */
+    /** Rota única de login — vale para ONG e usuário comum; o tipo vem em user.userType. */
     @PostMapping("/login")
     public ResponseEntity<AuthResponseDTO> login(@Valid @RequestBody LoginDTO dto) {
-        AuthResponseDTO resposta = authService.login(dto);
-        return ResponseEntity.ok(resposta);
+        AuthResponseDTO response = authService.login(dto);
+        return ResponseEntity.ok(response);
     }
 }

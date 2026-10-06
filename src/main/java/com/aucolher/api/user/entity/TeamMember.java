@@ -1,4 +1,4 @@
-package com.aucolher.api.usuario.entity;
+package com.aucolher.api.user.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;
@@ -13,11 +13,11 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-public class MembroEquipe {
+public class TeamMember {
 
     @Column(nullable = false, length = 150)
-    private String nome;
+    private String name;
 
     @Column(length = 100)
-    private String funcao;
+    private String role;
 }
