@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -52,6 +53,10 @@ public class SecurityConfig {
                 // ser público para o Spring Security concluir o fluxo OAuth2
                 .requestMatchers("/api/auth/**").permitAll()
                 .requestMatchers("/oauth2/**", "/login/oauth2/**").permitAll()
+                // "Meus animais" vem antes da regra pública: "/api/animais/*" também casaria com ele
+                .requestMatchers(HttpMethod.GET, "/api/animais/meus").authenticated()
+                // Vitrine pública: listagem, detalhes e animais de um perfil, sem login
+                .requestMatchers(HttpMethod.GET, "/api/animais", "/api/animais/*", "/api/usuarios/*/animais").permitAll()
                 .anyRequest().authenticated()
             )
             // Sem isto, uma requisição sem token para rota protegida seria
@@ -70,7 +75,7 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(allowedOrigins);
-        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
