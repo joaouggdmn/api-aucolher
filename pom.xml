@@ -20,6 +20,8 @@
     <properties>
         <java.version>17</java.version>
         <jjwt.version>0.12.6</jjwt.version>
+        <!-- 1.18.34 (padrão do Spring Boot 3.3) quebra no JDK 23+ com "TypeTag :: UNKNOWN" -->
+        <lombok.version>1.18.42</lombok.version>
     </properties>
 
     <dependencies>
