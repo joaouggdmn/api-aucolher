@@ -2,12 +2,12 @@ package com.aucolher.api.animal;
 
 import com.aucolher.api.animal.dto.AnimalRequestDTO;
 import com.aucolher.api.animal.entity.*;
-import com.aucolher.api.shared.exception.AcessoNegadoException;
+import com.aucolher.api.shared.exception.ForbiddenException;
 import com.aucolher.api.shared.exception.BusinessException;
-import com.aucolher.api.shared.exception.RecursoNaoEncontradoException;
-import com.aucolher.api.usuario.UsuarioRepository;
-import com.aucolher.api.usuario.entity.TipoUsuario;
-import com.aucolher.api.usuario.entity.Usuario;
+import com.aucolher.api.shared.exception.ResourceNotFoundException;
+import com.aucolher.api.user.UserRepository;
+import com.aucolher.api.user.entity.UserType;
+import com.aucolher.api.user.entity.User;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -26,123 +26,123 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class AnimalServiceTest {
 
-    private static final String EMAIL_DONO = "dono@email.com";
-    private static final String EMAIL_OUTRO = "outro@email.com";
+    private static final String OWNER_EMAIL = "owner@email.com";
+    private static final String OTHER_EMAIL = "other@email.com";
 
     @Mock
     private AnimalRepository animalRepository;
 
     @Mock
-    private UsuarioRepository usuarioRepository;
+    private UserRepository userRepository;
 
     @InjectMocks
     private AnimalService animalService;
 
     @Test
-    void cadastroExigeCidadeEUfNoPerfilDoDono() {
-        Usuario semEndereco = usuario(1L, EMAIL_DONO);
-        semEndereco.setCidade(null);
-        when(usuarioRepository.findByEmail(EMAIL_DONO)).thenReturn(Optional.of(semEndereco));
+    void createRequiresOwnerCityAndState() {
+        User withoutAddress = user(1L, OWNER_EMAIL);
+        withoutAddress.setCity(null);
+        when(userRepository.findByEmail(OWNER_EMAIL)).thenReturn(Optional.of(withoutAddress));
 
-        assertThatThrownBy(() -> animalService.cadastrar(EMAIL_DONO, requestValido()))
+        assertThatThrownBy(() -> animalService.create(OWNER_EMAIL, validRequest()))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("cidade e a UF");
         verify(animalRepository, never()).save(any());
     }
 
     @Test
-    void cadastroGravaOAnimalComODonoEAsFotosNaOrdem() {
-        Usuario dono = usuario(1L, EMAIL_DONO);
-        when(usuarioRepository.findByEmail(EMAIL_DONO)).thenReturn(Optional.of(dono));
-        when(animalRepository.save(any(Animal.class))).thenAnswer(chamada -> chamada.getArgument(0));
+    void createSavesOwnerAndPhotosInOrder() {
+        User owner = user(1L, OWNER_EMAIL);
+        when(userRepository.findByEmail(OWNER_EMAIL)).thenReturn(Optional.of(owner));
+        when(animalRepository.save(any(Animal.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        var resposta = animalService.cadastrar(EMAIL_DONO, requestValido());
+        var response = animalService.create(OWNER_EMAIL, validRequest());
 
-        assertThat(resposta.dono().id()).isEqualTo(1L);
-        assertThat(resposta.cidade()).isEqualTo("Araranguá");
-        assertThat(resposta.fotos()).containsExactly("https://fotos/1.jpg", "https://fotos/2.jpg");
-        assertThat(resposta.status()).isEqualTo(StatusAnimal.DISPONIVEL);
+        assertThat(response.owner().id()).isEqualTo(1L);
+        assertThat(response.city()).isEqualTo("Araranguá");
+        assertThat(response.photos()).containsExactly("https://fotos/1.jpg", "https://fotos/2.jpg");
+        assertThat(response.status()).isEqualTo(AnimalStatus.AVAILABLE);
     }
 
     @Test
-    void animalInativoNaoApareceParaQuemNaoEOdono() {
-        when(animalRepository.findById(10L)).thenReturn(Optional.of(animal(StatusAnimal.INATIVO)));
+    void inactiveAnimalIsHiddenFromNonOwners() {
+        when(animalRepository.findById(10L)).thenReturn(Optional.of(animal(AnimalStatus.INACTIVE)));
 
-        assertThatThrownBy(() -> animalService.buscarDetalhe(10L, null))
-                .isInstanceOf(RecursoNaoEncontradoException.class);
-        assertThatThrownBy(() -> animalService.buscarDetalhe(10L, EMAIL_OUTRO))
-                .isInstanceOf(RecursoNaoEncontradoException.class);
-        assertThat(animalService.buscarDetalhe(10L, EMAIL_DONO).id()).isEqualTo(10L);
+        assertThatThrownBy(() -> animalService.getDetail(10L, null))
+                .isInstanceOf(ResourceNotFoundException.class);
+        assertThatThrownBy(() -> animalService.getDetail(10L, OTHER_EMAIL))
+                .isInstanceOf(ResourceNotFoundException.class);
+        assertThat(animalService.getDetail(10L, OWNER_EMAIL).id()).isEqualTo(10L);
     }
 
     @Test
-    void soODonoEditaOAnimal() {
-        when(animalRepository.findById(10L)).thenReturn(Optional.of(animal(StatusAnimal.DISPONIVEL)));
+    void onlyOwnerCanUpdate() {
+        when(animalRepository.findById(10L)).thenReturn(Optional.of(animal(AnimalStatus.AVAILABLE)));
 
-        assertThatThrownBy(() -> animalService.editar(10L, EMAIL_OUTRO, requestValido()))
-                .isInstanceOf(AcessoNegadoException.class);
+        assertThatThrownBy(() -> animalService.update(10L, OTHER_EMAIL, validRequest()))
+                .isInstanceOf(ForbiddenException.class);
         verify(animalRepository, never()).saveAndFlush(any());
     }
 
     @Test
-    void animalAdotadoNaoPodeSerEditadoNemMudarDeStatus() {
-        when(animalRepository.findById(10L)).thenReturn(Optional.of(animal(StatusAnimal.ADOTADO)));
+    void adoptedAnimalIsFrozen() {
+        when(animalRepository.findById(10L)).thenReturn(Optional.of(animal(AnimalStatus.ADOPTED)));
 
-        assertThatThrownBy(() -> animalService.editar(10L, EMAIL_DONO, requestValido()))
+        assertThatThrownBy(() -> animalService.update(10L, OWNER_EMAIL, validRequest()))
                 .isInstanceOf(BusinessException.class);
-        assertThatThrownBy(() -> animalService.alterarStatus(10L, EMAIL_DONO, StatusAnimal.DISPONIVEL))
+        assertThatThrownBy(() -> animalService.changeStatus(10L, OWNER_EMAIL, AnimalStatus.AVAILABLE))
                 .isInstanceOf(BusinessException.class);
-        assertThatThrownBy(() -> animalService.inativar(10L, EMAIL_DONO))
+        assertThatThrownBy(() -> animalService.deactivate(10L, OWNER_EMAIL))
                 .isInstanceOf(BusinessException.class);
     }
 
     @Test
-    void excluirTiraOAnimalDoArSemApagar() {
-        Animal animal = animal(StatusAnimal.DISPONIVEL);
+    void deleteDeactivatesWithoutRemoving() {
+        Animal animal = animal(AnimalStatus.AVAILABLE);
         when(animalRepository.findById(10L)).thenReturn(Optional.of(animal));
         when(animalRepository.saveAndFlush(animal)).thenReturn(animal);
 
-        animalService.inativar(10L, EMAIL_DONO);
+        animalService.deactivate(10L, OWNER_EMAIL);
 
-        assertThat(animal.getStatus()).isEqualTo(StatusAnimal.INATIVO);
+        assertThat(animal.getStatus()).isEqualTo(AnimalStatus.INACTIVE);
         verify(animalRepository, never()).delete(any(Animal.class));
     }
 
     @Test
-    void perfilInexistenteDa404() {
-        when(usuarioRepository.existsById(99L)).thenReturn(false);
+    void unknownProfileReturns404() {
+        when(userRepository.existsById(99L)).thenReturn(false);
 
-        assertThatThrownBy(() -> animalService.listarDoPerfil(99L))
-                .isInstanceOf(RecursoNaoEncontradoException.class);
+        assertThatThrownBy(() -> animalService.listByOwner(99L))
+                .isInstanceOf(ResourceNotFoundException.class);
     }
 
     // ===================== Dados de teste =====================
 
-    private static Usuario usuario(Long id, String email) {
-        return Usuario.builder()
+    private static User user(Long id, String email) {
+        return User.builder()
                 .id(id)
-                .nome("ONG Teste")
+                .name("ONG Teste")
                 .email(email)
-                .tipoUsuario(TipoUsuario.ONG)
-                .cidade("Araranguá")
-                .estado("SC")
+                .userType(UserType.NGO)
+                .city("Araranguá")
+                .state("SC")
                 .build();
     }
 
-    private static Animal animal(StatusAnimal status) {
+    private static Animal animal(AnimalStatus status) {
         Animal animal = new Animal();
         animal.setId(10L);
-        animal.setDono(usuario(1L, EMAIL_DONO));
+        animal.setOwner(user(1L, OWNER_EMAIL));
         animal.setStatus(status);
-        animal.getFotos().add("https://fotos/1.jpg");
+        animal.getPhotos().add("https://fotos/1.jpg");
         return animal;
     }
 
-    private static AnimalRequestDTO requestValido() {
+    private static AnimalRequestDTO validRequest() {
         return new AnimalRequestDTO(
-                "Thor", Especie.CACHORRO, "Vira-lata", Sexo.MACHO, 3, UnidadeIdade.ANOS, Porte.GRANDE,
+                "Thor", Species.DOG, "Vira-lata", Sex.MALE, 3, AgeUnit.YEARS, AnimalSize.LARGE,
                 true, true, true, false,
-                Nivel.ALTO, Temperamento.PROTETOR, Nivel.MODERADO, Nivel.MODERADO,
+                Level.HIGH, Temperament.PROTECTIVE, Level.MODERATE, Level.MODERATE,
                 true, true, false, false,
                 "Protetor e brincalhão", "Thor foi resgatado ainda filhote.",
                 List.of("https://fotos/1.jpg", "https://fotos/2.jpg"));

@@ -53,10 +53,10 @@ public class SecurityConfig {
                 // ser público para o Spring Security concluir o fluxo OAuth2
                 .requestMatchers("/api/auth/**").permitAll()
                 .requestMatchers("/oauth2/**", "/login/oauth2/**").permitAll()
-                // "Meus animais" vem antes da regra pública: "/api/animais/*" também casaria com ele
-                .requestMatchers(HttpMethod.GET, "/api/animais/meus").authenticated()
+                // "Meus animais" vem antes da regra pública: "/api/animals/*" também casaria com ele
+                .requestMatchers(HttpMethod.GET, "/api/animals/mine").authenticated()
                 // Vitrine pública: listagem, detalhes e animais de um perfil, sem login
-                .requestMatchers(HttpMethod.GET, "/api/animais", "/api/animais/*", "/api/usuarios/*/animais").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/animals", "/api/animals/*", "/api/users/*/animals").permitAll()
                 .anyRequest().authenticated()
             )
             // Sem isto, uma requisição sem token para rota protegida seria

@@ -1,13 +1,13 @@
 package com.aucolher.api.auth.dto;
 
-import com.aucolher.api.usuario.dto.UsuarioResponseDTO;
+import com.aucolher.api.user.dto.UserResponseDTO;
 
 public record AuthResponseDTO(
         String token,
-        String tipo,
-        UsuarioResponseDTO usuario
+        String type,
+        UserResponseDTO user
 ) {
-    public AuthResponseDTO(String token, UsuarioResponseDTO usuario) {
-        this(token, "Bearer", usuario);
+    public AuthResponseDTO(String token, UserResponseDTO user) {
+        this(token, "Bearer", user);
     }
 }

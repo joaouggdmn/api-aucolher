@@ -1,6 +1,6 @@
 package com.aucolher.api.auth.dto;
 
-import com.aucolher.api.shared.validation.Sanitizador;
+import com.aucolher.api.shared.validation.Sanitizer;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 
@@ -11,11 +11,11 @@ public record LoginDTO(
         String email,
 
         @NotBlank(message = "A senha é obrigatória")
-        String senha
+        String password
 ) {
 
     public LoginDTO {
         // Autocompletar do navegador costuma trazer espaço no fim do e-mail
-        email = Sanitizador.texto(email);
+        email = Sanitizer.text(email);
     }
 }

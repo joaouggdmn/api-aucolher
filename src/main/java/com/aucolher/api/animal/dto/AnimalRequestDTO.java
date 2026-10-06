@@ -1,8 +1,8 @@
 package com.aucolher.api.animal.dto;
 
 import com.aucolher.api.animal.entity.*;
-import com.aucolher.api.shared.validation.FotoUrl;
-import com.aucolher.api.shared.validation.Sanitizador;
+import com.aucolher.api.shared.validation.PhotoUrl;
+import com.aucolher.api.shared.validation.Sanitizer;
 import jakarta.validation.constraints.*;
 
 import java.util.List;
@@ -20,88 +20,88 @@ public record AnimalRequestDTO(
 
         @NotBlank(message = "O nome do animal é obrigatório")
         @Size(max = 60, message = "O nome deve ter no máximo 60 caracteres")
-        String nome,
+        String name,
 
         @NotNull(message = "Informe a espécie")
-        Especie especie,
+        Species species,
 
         @NotBlank(message = "A raça é obrigatória (use \"SRD\" ou \"Vira-lata\" se não souber)")
         @Size(max = 60, message = "A raça deve ter no máximo 60 caracteres")
-        String raca,
+        String breed,
 
         @NotNull(message = "Informe o sexo")
-        Sexo sexo,
+        Sex sex,
 
         @NotNull(message = "Informe a idade")
-        Integer idadeValor,
+        Integer ageValue,
 
         @NotNull(message = "Informe se a idade está em anos ou meses")
-        UnidadeIdade idadeUnidade,
+        AgeUnit ageUnit,
 
         @NotNull(message = "Informe o porte")
-        Porte porte,
+        AnimalSize size,
 
         // ===================== Saúde (não informado = não) =====================
 
-        Boolean vacinado,
-        Boolean castrado,
-        Boolean vermifugado,
-        Boolean necessidadesEspeciais,
+        Boolean vaccinated,
+        Boolean neutered,
+        Boolean dewormed,
+        Boolean specialNeeds,
 
         // ===================== Comportamento e compatibilidade =====================
 
         @NotNull(message = "Informe o nível de energia")
-        Nivel nivelEnergia,
+        Level energyLevel,
 
         @NotNull(message = "Informe o temperamento")
-        Temperamento temperamento,
+        Temperament temperament,
 
         @NotNull(message = "Informe o nível de independência")
-        Nivel nivelIndependencia,
+        Level independenceLevel,
 
         @NotNull(message = "Informe o nível de vocalização")
-        Nivel nivelVocalizacao,
+        Level vocalization,
 
         @NotNull(message = "Informe se o animal é bom com crianças")
-        Boolean bomComCriancas,
+        Boolean goodWithChildren,
 
         @NotNull(message = "Informe se o animal é bom com outros cães")
-        Boolean bomComCaes,
+        Boolean goodWithDogs,
 
         @NotNull(message = "Informe se o animal é bom com gatos")
-        Boolean bomComGatos,
+        Boolean goodWithCats,
 
         @NotNull(message = "Informe se o animal vive bem em apartamento")
-        Boolean adaptadoApartamento,
+        Boolean apartmentFriendly,
 
         // ===================== Anúncio =====================
 
         @NotBlank(message = "O resumo é obrigatório")
         @Size(max = 200, message = "O resumo deve ter no máximo 200 caracteres")
-        String resumo,
+        String summary,
 
         @NotBlank(message = "A história é obrigatória")
         @Size(max = 3000, message = "A história deve ter no máximo 3000 caracteres")
-        String historia,
+        String story,
 
         @Size(min = 1, max = 4, message = "Envie de 1 a 4 fotos")
         List<
                 @NotBlank(message = "Foto vazia")
-                @Size(max = FotoUrl.TAMANHO_MAXIMO, message = "Uma das fotos é grande demais")
-                @Pattern(regexp = FotoUrl.FORMATO, message = "Foto em formato inválido")
-                String> fotos
+                @Size(max = PhotoUrl.MAX_LENGTH, message = "Uma das fotos é grande demais")
+                @Pattern(regexp = PhotoUrl.FORMAT, message = "Foto em formato inválido")
+                String> photos
 ) {
 
     public AnimalRequestDTO {
-        nome = Sanitizador.texto(nome);
-        raca = Sanitizador.texto(raca);
-        resumo = Sanitizador.texto(resumo);
-        historia = Sanitizador.texto(historia);
-        vacinado = Boolean.TRUE.equals(vacinado);
-        castrado = Boolean.TRUE.equals(castrado);
-        vermifugado = Boolean.TRUE.equals(vermifugado);
-        necessidadesEspeciais = Boolean.TRUE.equals(necessidadesEspeciais);
-        fotos = fotos == null ? List.of() : fotos.stream().map(Sanitizador::texto).toList();
+        name = Sanitizer.text(name);
+        breed = Sanitizer.text(breed);
+        summary = Sanitizer.text(summary);
+        story = Sanitizer.text(story);
+        vaccinated = Boolean.TRUE.equals(vaccinated);
+        neutered = Boolean.TRUE.equals(neutered);
+        dewormed = Boolean.TRUE.equals(dewormed);
+        specialNeeds = Boolean.TRUE.equals(specialNeeds);
+        photos = photos == null ? List.of() : photos.stream().map(Sanitizer::text).toList();
     }
 
     /**
@@ -109,10 +109,10 @@ public record AnimalRequestDTO(
      * como no formulário. É um método de validação, não um campo do JSON.
      */
     @AssertTrue(message = "Idade inválida: informe de 0 a 11 meses ou de 1 a 30 anos")
-    public boolean isIdadeValida() {
-        if (idadeValor == null || idadeUnidade == null) return true; // o @NotNull de cada campo já acusa
-        return idadeUnidade == UnidadeIdade.MESES
-                ? idadeValor >= 0 && idadeValor <= 11
-                : idadeValor >= 1 && idadeValor <= 30;
+    public boolean isAgeValid() {
+        if (ageValue == null || ageUnit == null) return true; // o @NotNull de cada campo já acusa
+        return ageUnit == AgeUnit.MONTHS
+                ? ageValue >= 0 && ageValue <= 11
+                : ageValue >= 1 && ageValue <= 30;
     }
 }

@@ -1,17 +1,17 @@
 package com.aucolher.api.auth;
 
 import com.aucolher.api.auth.dto.AuthResponseDTO;
-import com.aucolher.api.auth.dto.CadastroOngDTO;
-import com.aucolher.api.auth.dto.CadastroUserDTO;
+import com.aucolher.api.auth.dto.NgoRegistrationDTO;
+import com.aucolher.api.auth.dto.PersonRegistrationDTO;
 import com.aucolher.api.auth.dto.LoginDTO;
 import com.aucolher.api.security.JwtService;
 import com.aucolher.api.shared.exception.BusinessException;
-import com.aucolher.api.shared.exception.CredenciaisInvalidasException;
-import com.aucolher.api.usuario.UsuarioRepository;
-import com.aucolher.api.usuario.dto.UsuarioResponseDTO;
-import com.aucolher.api.usuario.entity.AuthProvider;
-import com.aucolher.api.usuario.entity.TipoUsuario;
-import com.aucolher.api.usuario.entity.Usuario;
+import com.aucolher.api.shared.exception.InvalidCredentialsException;
+import com.aucolher.api.user.UserRepository;
+import com.aucolher.api.user.dto.UserResponseDTO;
+import com.aucolher.api.user.entity.AuthProvider;
+import com.aucolher.api.user.entity.UserType;
+import com.aucolher.api.user.entity.User;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -26,101 +26,101 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class AuthService {
 
-    private final UsuarioRepository usuarioRepository;
+    private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
 
     @Transactional
-    public AuthResponseDTO registrarOng(CadastroOngDTO dto) {
-        garantirEmailDisponivel(dto.email());
+    public AuthResponseDTO registerNgo(NgoRegistrationDTO dto) {
+        ensureEmailAvailable(dto.email());
 
-        if (usuarioRepository.existsByCnpj(dto.cnpj())) {
+        if (userRepository.existsByCnpj(dto.cnpj())) {
             throw new BusinessException("Já existe uma ONG cadastrada com este CNPJ");
         }
 
         // Fluxo temporário: sem etapa PENDENTE de aprovação (seção 7 das regras
         // de negócio) — a ONG já nasce ativa e sem o selo de verificada
-        Usuario usuario = Usuario.builder()
-                .nome(dto.nome())
+        User user = User.builder()
+                .name(dto.name())
                 .email(dto.email())
-                .senha(passwordEncoder.encode(dto.senha()))
+                .password(passwordEncoder.encode(dto.password()))
                 .cnpj(dto.cnpj())
-                .tipoUsuario(TipoUsuario.ONG)
+                .userType(UserType.NGO)
                 .provider(AuthProvider.LOCAL)
-                .ativo(true)
-                .fotoUrl(dto.fotoUrl())
+                .active(true)
+                .photoUrl(dto.photoUrl())
                 .bio(dto.bio())
-                .emailInstitucional(dto.emailInstitucional())
+                .institutionalEmail(dto.institutionalEmail())
                 .instagram(dto.instagram())
                 .twitter(dto.twitter())
                 .facebook(dto.facebook())
-                .anoFundacao(dto.anoFundacao())
+                .foundedYear(dto.foundedYear())
                 .cep(dto.cep())
-                .logradouro(dto.logradouro())
-                .numero(dto.numero())
-                .complemento(dto.complemento())
-                .bairro(dto.bairro())
-                .cidade(dto.cidade())
-                .estado(dto.estado())
+                .street(dto.street())
+                .number(dto.number())
+                .complement(dto.complement())
+                .district(dto.district())
+                .city(dto.city())
+                .state(dto.state())
                 .build();
 
-        return gerarResposta(usuarioRepository.save(usuario));
+        return buildResponse(userRepository.save(user));
     }
 
     @Transactional
-    public AuthResponseDTO registrarUsuarioComum(CadastroUserDTO dto) {
-        garantirEmailDisponivel(dto.email());
+    public AuthResponseDTO registerPerson(PersonRegistrationDTO dto) {
+        ensureEmailAvailable(dto.email());
 
-        Usuario usuario = Usuario.builder()
-                .nome(dto.nome())
+        User user = User.builder()
+                .name(dto.name())
                 .email(dto.email())
-                .senha(passwordEncoder.encode(dto.senha()))
-                .tipoUsuario(TipoUsuario.USUARIO_COMUM)
+                .password(passwordEncoder.encode(dto.password()))
+                .userType(UserType.PERSON)
                 .provider(AuthProvider.LOCAL)
-                .ativo(true)
-                .fotoUrl(dto.fotoUrl())
+                .active(true)
+                .photoUrl(dto.photoUrl())
                 .build();
 
-        return gerarResposta(usuarioRepository.save(usuario));
+        return buildResponse(userRepository.save(user));
     }
 
     /**
      * Login único para qualquer tipo de conta: valida só e-mail e senha.
-     * O papel (tipoUsuario) vai no payload da resposta, e é o frontend que
+     * O papel (userType) vai no payload da resposta, e é o frontend que
      * decide o que mostrar a partir dele.
      */
     @Transactional(readOnly = true)
     public AuthResponseDTO login(LoginDTO dto) {
-        return gerarResposta(autenticar(dto));
+        return buildResponse(authenticate(dto));
     }
 
-    private void garantirEmailDisponivel(String email) {
-        if (usuarioRepository.existsByEmail(email)) {
+    private void ensureEmailAvailable(String email) {
+        if (userRepository.existsByEmail(email)) {
             throw new BusinessException("Já existe um usuário cadastrado com este e-mail");
         }
     }
 
-    private Usuario autenticar(LoginDTO dto) {
-        Usuario usuario = usuarioRepository.findByEmail(dto.email())
-                .orElseThrow(() -> new CredenciaisInvalidasException("E-mail ou senha inválidos"));
+    private User authenticate(LoginDTO dto) {
+        User user = userRepository.findByEmail(dto.email())
+                .orElseThrow(() -> new InvalidCredentialsException("E-mail ou senha inválidos"));
 
-        if (usuario.getProvider() != AuthProvider.LOCAL || usuario.getSenha() == null) {
-            throw new CredenciaisInvalidasException("Esta conta utiliza login via Google. Use a autenticação OAuth2");
+        if (user.getProvider() != AuthProvider.LOCAL || user.getPassword() == null) {
+            throw new InvalidCredentialsException("Esta conta utiliza login via Google. Use a autenticação OAuth2");
         }
 
-        if (!usuario.getAtivo()) {
-            throw new CredenciaisInvalidasException("Usuário inativo");
+        if (!user.getActive()) {
+            throw new InvalidCredentialsException("Usuário inativo");
         }
 
-        if (!passwordEncoder.matches(dto.senha(), usuario.getSenha())) {
-            throw new CredenciaisInvalidasException("E-mail ou senha inválidos");
+        if (!passwordEncoder.matches(dto.password(), user.getPassword())) {
+            throw new InvalidCredentialsException("E-mail ou senha inválidos");
         }
 
-        return usuario;
+        return user;
     }
 
-    private AuthResponseDTO gerarResposta(Usuario usuario) {
-        String token = jwtService.gerarToken(usuario.getEmail());
-        return new AuthResponseDTO(token, UsuarioResponseDTO.from(usuario));
+    private AuthResponseDTO buildResponse(User user) {
+        String token = jwtService.generateToken(user.getEmail());
+        return new AuthResponseDTO(token, UserResponseDTO.from(user));
     }
 }

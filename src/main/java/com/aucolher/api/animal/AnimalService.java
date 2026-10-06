@@ -1,17 +1,17 @@
 package com.aucolher.api.animal;
 
-import com.aucolher.api.animal.dto.AnimalDetalheDTO;
-import com.aucolher.api.animal.dto.AnimalFiltroDTO;
+import com.aucolher.api.animal.dto.AnimalDetailDTO;
+import com.aucolher.api.animal.dto.AnimalFilterDTO;
 import com.aucolher.api.animal.dto.AnimalRequestDTO;
-import com.aucolher.api.animal.dto.AnimalResumoDTO;
+import com.aucolher.api.animal.dto.AnimalSummaryDTO;
 import com.aucolher.api.animal.entity.Animal;
-import com.aucolher.api.animal.entity.StatusAnimal;
-import com.aucolher.api.shared.dto.PaginaDTO;
-import com.aucolher.api.shared.exception.AcessoNegadoException;
+import com.aucolher.api.animal.entity.AnimalStatus;
+import com.aucolher.api.shared.dto.PageDTO;
+import com.aucolher.api.shared.exception.ForbiddenException;
 import com.aucolher.api.shared.exception.BusinessException;
-import com.aucolher.api.shared.exception.RecursoNaoEncontradoException;
-import com.aucolher.api.usuario.UsuarioRepository;
-import com.aucolher.api.usuario.entity.Usuario;
+import com.aucolher.api.shared.exception.ResourceNotFoundException;
+import com.aucolher.api.user.UserRepository;
+import com.aucolher.api.user.entity.User;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -31,29 +31,29 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class AnimalService {
 
-    static final int TAMANHO_PAGINA_MAXIMO = 50;
+    static final int MAX_PAGE_SIZE = 50;
 
     private final AnimalRepository animalRepository;
-    private final UsuarioRepository usuarioRepository;
+    private final UserRepository userRepository;
 
     /**
      * Qualquer conta (ONG ou usuário comum) pode anunciar, desde que tenha
      * cidade e UF no perfil — é de lá que sai a localização do animal.
      */
     @Transactional
-    public AnimalDetalheDTO cadastrar(String emailDono, AnimalRequestDTO dto) {
-        Usuario dono = usuarioRepository.findByEmail(emailDono)
+    public AnimalDetailDTO create(String ownerEmail, AnimalRequestDTO dto) {
+        User owner = userRepository.findByEmail(ownerEmail)
                 .orElseThrow(() -> new BusinessException("Usuário não encontrado"));
 
-        if (dono.getCidade() == null || dono.getEstado() == null) {
+        if (owner.getCity() == null || owner.getState() == null) {
             throw new BusinessException("Complete a cidade e a UF do seu perfil antes de anunciar um animal");
         }
 
         Animal animal = new Animal();
-        animal.setDono(dono);
-        preencher(animal, dto);
+        animal.setOwner(owner);
+        fill(animal, dto);
 
-        return AnimalDetalheDTO.from(animalRepository.save(animal));
+        return AnimalDetailDTO.from(animalRepository.save(animal));
     }
 
     /**
@@ -63,42 +63,42 @@ public class AnimalService {
      * @param emailVisitante e-mail de quem está vendo, ou null se não estiver logado
      */
     @Transactional(readOnly = true)
-    public AnimalDetalheDTO buscarDetalhe(Long id, String emailVisitante) {
-        Animal animal = buscarAnimal(id);
+    public AnimalDetailDTO getDetail(Long id, String viewerEmail) {
+        Animal animal = findAnimal(id);
 
-        if (animal.getStatus() == StatusAnimal.INATIVO && !animal.pertenceA(emailVisitante)) {
-            throw animalNaoEncontrado();
+        if (animal.getStatus() == AnimalStatus.INACTIVE && !animal.isOwnedBy(viewerEmail)) {
+            throw animalNotFound();
         }
 
-        return AnimalDetalheDTO.from(animal);
+        return AnimalDetailDTO.from(animal);
     }
 
     /** Vitrine pública: só disponíveis, com filtros, do anúncio mais recente para o mais antigo. */
     @Transactional(readOnly = true)
-    public PaginaDTO<AnimalResumoDTO> listarDisponiveis(AnimalFiltroDTO filtro, int pagina, int tamanho) {
-        PageRequest paginacao = PageRequest.of(
-                Math.max(pagina, 0),
-                Math.min(Math.max(tamanho, 1), TAMANHO_PAGINA_MAXIMO),
-                Sort.by(Sort.Direction.DESC, "dataCriacao"));
+    public PageDTO<AnimalSummaryDTO> listAvailable(AnimalFilterDTO filter, int page, int size) {
+        PageRequest pageRequest = PageRequest.of(
+                Math.max(page, 0),
+                Math.min(Math.max(size, 1), MAX_PAGE_SIZE),
+                Sort.by(Sort.Direction.DESC, "createdAt"));
 
-        Page<Animal> resultado = animalRepository.findAll(AnimalSpecifications.disponiveis(filtro), paginacao);
-        Map<Long, AnimalResumoDTO> resumos = resumosPorId(resultado.getContent());
-        return PaginaDTO.from(resultado.map(animal -> resumos.get(animal.getId())));
+        Page<Animal> result = animalRepository.findAll(AnimalSpecifications.available(filter), pageRequest);
+        Map<Long, AnimalSummaryDTO> summaries = summariesById(result.getContent());
+        return PageDTO.from(result.map(animal -> summaries.get(animal.getId())));
     }
 
     /** "Meus animais": todos os anúncios da conta logada, inclusive adotados e inativos. */
     @Transactional(readOnly = true)
-    public List<AnimalResumoDTO> listarMeus(String emailDono) {
-        return resumir(animalRepository.findByDonoEmailOrderByDataCriacaoDesc(emailDono));
+    public List<AnimalSummaryDTO> listMine(String ownerEmail) {
+        return summarize(animalRepository.findByOwnerEmailOrderByCreatedAtDesc(ownerEmail));
     }
 
     /** Animais disponíveis de um perfil público. */
     @Transactional(readOnly = true)
-    public List<AnimalResumoDTO> listarDoPerfil(Long usuarioId) {
-        if (!usuarioRepository.existsById(usuarioId)) {
-            throw new RecursoNaoEncontradoException("Usuário não encontrado");
+    public List<AnimalSummaryDTO> listByOwner(Long userId) {
+        if (!userRepository.existsById(userId)) {
+            throw new ResourceNotFoundException("Usuário não encontrado");
         }
-        return resumir(animalRepository.findByDonoIdAndStatusOrderByDataCriacaoDesc(usuarioId, StatusAnimal.DISPONIVEL));
+        return summarize(animalRepository.findByOwnerIdAndStatusOrderByCreatedAtDesc(userId, AnimalStatus.AVAILABLE));
     }
 
     /**
@@ -106,20 +106,20 @@ public class AnimalService {
      * consulta só. Público porque os favoritos usam os mesmos cards.
      */
     @Transactional(readOnly = true)
-    public List<AnimalResumoDTO> resumir(List<Animal> animais) {
-        Map<Long, AnimalResumoDTO> resumos = resumosPorId(animais);
-        return animais.stream().map(animal -> resumos.get(animal.getId())).toList();
+    public List<AnimalSummaryDTO> summarize(List<Animal> animals) {
+        Map<Long, AnimalSummaryDTO> summaries = summariesById(animals);
+        return animals.stream().map(animal -> summaries.get(animal.getId())).toList();
     }
 
-    private Map<Long, AnimalResumoDTO> resumosPorId(List<Animal> animais) {
-        if (animais.isEmpty()) return Map.of();
+    private Map<Long, AnimalSummaryDTO> summariesById(List<Animal> animals) {
+        if (animals.isEmpty()) return Map.of();
 
-        Map<Long, String> capas = animalRepository.buscarCapas(animais.stream().map(Animal::getId).toList()).stream()
-                .collect(Collectors.toMap(AnimalRepository.FotoCapa::getAnimalId, AnimalRepository.FotoCapa::getUrl));
+        Map<Long, String> covers = animalRepository.findCoverPhotos(animals.stream().map(Animal::getId).toList()).stream()
+                .collect(Collectors.toMap(AnimalRepository.CoverPhoto::getAnimalId, AnimalRepository.CoverPhoto::getUrl));
 
-        return animais.stream().collect(Collectors.toMap(
+        return animals.stream().collect(Collectors.toMap(
                 Animal::getId,
-                animal -> AnimalResumoDTO.from(animal, capas.get(animal.getId()))));
+                animal -> AnimalSummaryDTO.from(animal, covers.get(animal.getId()))));
     }
 
     /**
@@ -127,47 +127,47 @@ public class AnimalService {
      * inativo pode ser editado antes de voltar ao ar.
      */
     @Transactional
-    public AnimalDetalheDTO editar(Long id, String emailDono, AnimalRequestDTO dto) {
-        Animal animal = buscarDoDono(id, emailDono);
+    public AnimalDetailDTO update(Long id, String ownerEmail, AnimalRequestDTO dto) {
+        Animal animal = findOwned(id, ownerEmail);
 
-        if (animal.getStatus() == StatusAnimal.ADOTADO) {
+        if (animal.getStatus() == AnimalStatus.ADOPTED) {
             throw new BusinessException("Um animal já adotado não pode mais ser editado");
         }
 
-        preencher(animal, dto);
-        return salvarEResponder(animal);
+        fill(animal, dto);
+        return saveAndRespond(animal);
     }
 
     /**
-     * Muda o status do anúncio: marcar como adotado, tirar do ar (INATIVO) ou
-     * voltar a DISPONIVEL. ADOTADO é definitivo.
+     * Muda o status do anúncio: marcar como adotado, tirar do ar (INACTIVE) ou
+     * voltar a AVAILABLE. ADOPTED é definitivo.
      */
     @Transactional
-    public AnimalDetalheDTO alterarStatus(Long id, String emailDono, StatusAnimal novoStatus) {
-        Animal animal = buscarDoDono(id, emailDono);
+    public AnimalDetailDTO changeStatus(Long id, String ownerEmail, AnimalStatus newStatus) {
+        Animal animal = findOwned(id, ownerEmail);
 
-        if (animal.getStatus() == novoStatus) {
-            return AnimalDetalheDTO.from(animal);
+        if (animal.getStatus() == newStatus) {
+            return AnimalDetailDTO.from(animal);
         }
-        if (animal.getStatus() == StatusAnimal.ADOTADO) {
+        if (animal.getStatus() == AnimalStatus.ADOPTED) {
             throw new BusinessException("Um animal já adotado não muda mais de status");
         }
 
-        animal.setStatus(novoStatus);
-        return salvarEResponder(animal);
+        animal.setStatus(newStatus);
+        return saveAndRespond(animal);
     }
 
-    /** "Excluir" o anúncio: exclusão lógica, o animal vira INATIVO. */
+    /** "Excluir" o anúncio: exclusão lógica, o animal vira INACTIVE. */
     @Transactional
-    public void inativar(Long id, String emailDono) {
-        alterarStatus(id, emailDono, StatusAnimal.INATIVO);
+    public void deactivate(Long id, String ownerEmail) {
+        changeStatus(id, ownerEmail, AnimalStatus.INACTIVE);
     }
 
     /** Animal que o usuário logado quer alterar: precisa existir e ser dele. */
-    private Animal buscarDoDono(Long id, String emailDono) {
-        Animal animal = buscarAnimal(id);
-        if (!animal.pertenceA(emailDono)) {
-            throw new AcessoNegadoException("Só quem anunciou pode alterar este animal");
+    private Animal findOwned(Long id, String ownerEmail) {
+        Animal animal = findAnimal(id);
+        if (!animal.isOwnedBy(ownerEmail)) {
+            throw new ForbiddenException("Só quem anunciou pode alterar este animal");
         }
         return animal;
     }
@@ -176,44 +176,44 @@ public class AnimalService {
      * O flush força o UPDATE agora — é nele que rodam o @PreUpdate (faixa
      * etária e data de atualização) — para a resposta já sair com os valores novos.
      */
-    private AnimalDetalheDTO salvarEResponder(Animal animal) {
-        return AnimalDetalheDTO.from(animalRepository.saveAndFlush(animal));
+    private AnimalDetailDTO saveAndRespond(Animal animal) {
+        return AnimalDetailDTO.from(animalRepository.saveAndFlush(animal));
     }
 
-    private Animal buscarAnimal(Long id) {
-        return animalRepository.findById(id).orElseThrow(this::animalNaoEncontrado);
+    private Animal findAnimal(Long id) {
+        return animalRepository.findById(id).orElseThrow(this::animalNotFound);
     }
 
-    private RecursoNaoEncontradoException animalNaoEncontrado() {
-        return new RecursoNaoEncontradoException("Animal não encontrado");
+    private ResourceNotFoundException animalNotFound() {
+        return new ResourceNotFoundException("Animal não encontrado");
     }
 
     /** Copia o anúncio do DTO para a entidade — usado no cadastro e na edição. */
-    private void preencher(Animal animal, AnimalRequestDTO dto) {
-        animal.setNome(dto.nome());
-        animal.setEspecie(dto.especie());
-        animal.setRaca(dto.raca());
-        animal.setSexo(dto.sexo());
-        animal.setIdadeValor(dto.idadeValor());
-        animal.setIdadeUnidade(dto.idadeUnidade());
-        animal.setPorte(dto.porte());
-        animal.setVacinado(dto.vacinado());
-        animal.setCastrado(dto.castrado());
-        animal.setVermifugado(dto.vermifugado());
-        animal.setNecessidadesEspeciais(dto.necessidadesEspeciais());
-        animal.setNivelEnergia(dto.nivelEnergia());
-        animal.setTemperamento(dto.temperamento());
-        animal.setNivelIndependencia(dto.nivelIndependencia());
-        animal.setNivelVocalizacao(dto.nivelVocalizacao());
-        animal.setBomComCriancas(dto.bomComCriancas());
-        animal.setBomComCaes(dto.bomComCaes());
-        animal.setBomComGatos(dto.bomComGatos());
-        animal.setAdaptadoApartamento(dto.adaptadoApartamento());
-        animal.setResumo(dto.resumo());
-        animal.setHistoria(dto.historia());
+    private void fill(Animal animal, AnimalRequestDTO dto) {
+        animal.setName(dto.name());
+        animal.setSpecies(dto.species());
+        animal.setBreed(dto.breed());
+        animal.setSex(dto.sex());
+        animal.setAgeValue(dto.ageValue());
+        animal.setAgeUnit(dto.ageUnit());
+        animal.setSize(dto.size());
+        animal.setVaccinated(dto.vaccinated());
+        animal.setNeutered(dto.neutered());
+        animal.setDewormed(dto.dewormed());
+        animal.setSpecialNeeds(dto.specialNeeds());
+        animal.setEnergyLevel(dto.energyLevel());
+        animal.setTemperament(dto.temperament());
+        animal.setIndependenceLevel(dto.independenceLevel());
+        animal.setVocalization(dto.vocalization());
+        animal.setGoodWithChildren(dto.goodWithChildren());
+        animal.setGoodWithDogs(dto.goodWithDogs());
+        animal.setGoodWithCats(dto.goodWithCats());
+        animal.setApartmentFriendly(dto.apartmentFriendly());
+        animal.setSummary(dto.summary());
+        animal.setStory(dto.story());
 
         // A ordem enviada é a ordem de exibição; a primeira foto é a capa
-        animal.getFotos().clear();
-        animal.getFotos().addAll(dto.fotos());
+        animal.getPhotos().clear();
+        animal.getPhotos().addAll(dto.photos());
     }
 }
