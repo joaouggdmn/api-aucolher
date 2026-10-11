@@ -3,6 +3,7 @@ package com.aucolher.api.config;
 import com.aucolher.api.security.CustomOAuth2UserService;
 import com.aucolher.api.security.JwtAuthenticationFilter;
 import com.aucolher.api.security.OAuth2AuthenticationSuccessHandler;
+import jakarta.servlet.DispatcherType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -49,6 +50,10 @@ public class SecurityConfig {
             .cors(cors -> {})
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
+                // Repasse interno para a página de erro (/error): o filtro do JWT
+                // não roda de novo nele, então sem isto um 403 (ex.: pessoa em
+                // /api/admin) chegava ao frontend como 401 — e o 401 desloga
+                .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                 // Cadastro e login são públicos; o callback do Google precisa
                 // ser público para o Spring Security concluir o fluxo OAuth2
                 .requestMatchers("/api/auth/**").permitAll()
@@ -57,6 +62,9 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/animals/mine").authenticated()
                 // Vitrine pública: listagem, detalhes e animais de um perfil, sem login
                 .requestMatchers(HttpMethod.GET, "/api/animals", "/api/animals/*", "/api/users/*/animals").permitAll()
+                // Painel do admin: só a conta ADMIN (a autoridade ROLE_ADMIN vem do
+                // CustomUserDetailsService). Sem token → 401; logado sem ser admin → 403
+                .requestMatchers("/api/admin/**").hasRole("ADMIN")
                 .anyRequest().authenticated()
             )
             // Sem isto, uma requisição sem token para rota protegida seria

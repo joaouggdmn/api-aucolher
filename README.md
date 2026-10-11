@@ -16,6 +16,7 @@ src/main/java/com/aucolher/api/
 ├── auth/                                   # Cadastro e login
 │   ├── AuthController.java
 │   ├── AuthService.java                    # Regra de negócio e hashing BCrypt
+│   ├── AdminAccountInitializer.java        # Cria a conta ADMIN ao subir (ADMIN_EMAIL / ADMIN_PASSWORD)
 │   └── dto/                                # LoginDTO, NgoRegistrationDTO, PersonRegistrationDTO, AuthResponseDTO
 ├── user/                                   # Conta do usuário e perfil ("Minha conta")
 │   ├── UserController.java
@@ -72,6 +73,16 @@ psql -U postgres -h localhost -d aucolher_db -f sql/migrations/002_animals_engli
 
 Cada migração roda numa transação: se algo falhar, o banco fica como estava. Sem elas a API não sobe (erro `Schema-validation: missing table [users]`).
 
+#### Conta ADMIN e ONGs verificadas (migração 003)
+
+Um banco criado antes do tipo `ADMIN` recusa a conta admin (a constraint `chk_users_user_type` só aceita `NGO` e `PERSON`). Aplique a 003 uma vez. Ela também marca como verificadas as ONGs que já existem, porque toda ONG nasce verificada:
+
+```bash
+psql -U postgres -h localhost -d aucolher_db -f sql/migrations/003_admin_and_verified_ngos.sql
+```
+
+Roda numa transação e pode ser repetida sem estragar nada. Banco novo, criado pelo `schema.sql` atual, não precisa dela.
+
 Depois de trazer as mudanças do Git, faça **Build → Rebuild Project** no IntelliJ (ou `mvn clean`): classes antigas compiladas (`Usuario`, `Animal` com campos em português) ficam na pasta `target/` e impedem a API de subir.
 
 ### 2. Variáveis de ambiente
@@ -85,8 +96,25 @@ Depois de trazer as mudanças do Git, faça **Build → Rebuild Project** no Int
 | `JWT_SECRET`          | Chave HMAC dos tokens JWT (mínimo 32 caracteres) | — (sem padrão versionado) |
 | `JWT_EXPIRATION_MS`   | Validade do token em milissegundos           | `86400000` (24h)        |
 | `CORS_ALLOWED_ORIGINS`| Origens liberadas no CORS (separadas por vírgula) | `http://localhost:5173` |
+| `ADMIN_EMAIL`         | E-mail da conta admin criada ao subir        | — (sem padrão versionado) |
+| `ADMIN_PASSWORD`      | Senha da conta admin (mínimo 8 caracteres)   | — (sem padrão versionado) |
+| `ADMIN_NAME`          | Nome exibido da conta admin                  | `Administrador`         |
 
 Sem `JWT_SECRET`, a API sobe gerando uma chave aleatória por execução (registra um WARN no log): dá para desenvolver, mas todo restart invalida os tokens já emitidos. Defina a variável em qualquer ambiente que não seja a sua máquina.
+
+**Conta admin.** Não existe cadastro público de admin: quem cria a conta `ADMIN` é a própria API, ao subir.
+- Ela usa `ADMIN_EMAIL` e `ADMIN_PASSWORD` (mínimo 8 caracteres) e só cria a conta se esse e-mail ainda não existir.
+- Se faltar alguma das duas variáveis, ou se a senha for curta, nenhuma conta é criada e o log registra um WARN com o motivo.
+- Uma conta que já existe nunca é alterada:
+  - trocar `ADMIN_PASSWORD` depois não muda a senha;
+  - um e-mail que já pertence a uma pessoa ou ONG não vira admin.
+
+No IntelliJ, defina as variáveis assim:
+1. Abra **Run → Edit Configurations**.
+2. Escolha a configuração da API.
+3. Em **Environment variables**, coloque `ADMIN_EMAIL=admin@aucolher.com;ADMIN_PASSWORD=uma-senha-forte`.
+
+Na primeira execução, o log mostra `Conta admin criada para ...`.
 
 Para o login Google funcionar, crie as credenciais em [Google Cloud Console](https://console.cloud.google.com/apis/credentials) com **Authorized redirect URI**: `http://localhost:8080/login/oauth2/code/google`.
 
@@ -135,7 +163,7 @@ Content-Type: application/json
 }
 ```
 
-Endereço é obrigatório; `photoUrl`, `bio`, `institutionalEmail`, redes sociais e `foundedYear` são opcionais. `foundedYear` precisa estar entre 1800 e o ano atual. CNPJ e CEP podem vir com ou sem máscara (são gravados só com dígitos) e Instagram/X com ou sem `@`.
+A ONG já nasce ativa e com `isVerified: true`: não há etapa de aprovação. Endereço é obrigatório; `photoUrl`, `bio`, `institutionalEmail`, redes sociais e `foundedYear` são opcionais. `foundedYear` precisa estar entre 1800 e o ano atual. CNPJ e CEP podem vir com ou sem máscara (são gravados só com dígitos) e Instagram/X com ou sem `@`.
 
 ### Cadastro de Usuário Comum
 ```
@@ -150,7 +178,7 @@ Content-Type: application/json
 }
 ```
 
-### Login (ONG e Usuário Comum)
+### Login (qualquer tipo de conta)
 ```
 POST /api/auth/login
 Content-Type: application/json
@@ -158,7 +186,7 @@ Content-Type: application/json
 { "email": "maria@email.com", "password": "senhaSegura123" }
 ```
 
-Rota única para qualquer tipo de conta: o tipo vem em `user.userType` na resposta (`NGO` ou `PERSON`).
+Rota única para qualquer tipo de conta: o tipo vem em `user.userType` na resposta (`NGO`, `PERSON` ou `ADMIN`).
 
 ### Formato dos erros
 
@@ -344,6 +372,10 @@ Todas exigem login.
 - **Senha nula para contas OAuth2**: usuários criados via Google não têm senha própria; o login tradicional (`/login`) rejeita essas contas com uma mensagem explicativa.
 - **Normalização nos DTOs**: os construtores compactos dos records limpam os campos (trim, vazio vira null, CNPJ/CEP só com dígitos, rede social sem `@`, link com protocolo) antes da validação. A Service recebe dados já canônicos e cuida só da regra de negócio.
 - **CNPJ pelo Bean Validation**: `@CNPJ` do Hibernate Validator confere os dígitos verificadores; um `@Pattern` extra barra sequências repetidas (`00.000.000/0000-00`), que o `@CNPJ` sozinho aceita.
+- **Admin sem cadastro público**:
+  - a conta `ADMIN` nasce das variáveis de ambiente (`AdminAccountInitializer`), então nenhuma senha fica no repositório;
+  - `/api/admin/**` exige `ROLE_ADMIN`: sem token responde 401, e com token de pessoa ou ONG responde 403;
+  - o repasse interno para `/error` é liberado (`DispatcherType.ERROR`). Sem isso, todo 403 da camada de segurança chegava ao cliente como 401, e o frontend desloga no 401.
 - **JWT mínimo**: o token carrega apenas o e-mail (subject) e a validade. Papel e id não viram claim para não circular desatualizados — quem responde por eles é o banco, relido a cada requisição autenticada.
 - **`ddl-auto=validate`**: o schema vem do `sql/schema.sql`; o Hibernate só confere se o banco bate com as entidades, em vez de alterar tabelas sozinho. Mudanças em bancos já existentes vão em `sql/migrations/`, numeradas e transacionais.
 - **Constraints de banco** (`CHECK`) reforçam no schema.sql as mesmas regras já validadas na aplicação (ONG exige CNPJ; contas LOCAL exigem senha; valores dos enums dos animais) como camada extra de integridade.
