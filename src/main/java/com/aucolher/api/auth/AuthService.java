@@ -38,8 +38,8 @@ public class AuthService {
             throw new BusinessException("Já existe uma ONG cadastrada com este CNPJ");
         }
 
-        // Fluxo temporário: sem etapa PENDENTE de aprovação (seção 7 das regras
-        // de negócio) — a ONG já nasce ativa e sem o selo de verificada
+        // Sem etapa de aprovação (seção 7 das regras de negócio): a ONG já
+        // nasce ativa e com o selo de verificada
         User user = User.builder()
                 .name(dto.name())
                 .email(dto.email())
@@ -48,6 +48,7 @@ public class AuthService {
                 .userType(UserType.NGO)
                 .provider(AuthProvider.LOCAL)
                 .active(true)
+                .verified(true)
                 .photoUrl(dto.photoUrl())
                 .bio(dto.bio())
                 .institutionalEmail(dto.institutionalEmail())
