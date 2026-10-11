@@ -8,7 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Entidade que representa tanto ONGs quanto Usuários Comuns.
+ * Entidade que representa ONGs, usuários comuns e o admin.
  * O campo `userType` define o perfil, e `provider` define a
  * origem da autenticação (cadastro tradicional ou OAuth2/Google).
  *
@@ -82,7 +82,7 @@ public class User {
     @Column(name = "institutional_email", length = 150)
     private String institutionalEmail;
 
-    /** Selo de "verificada", concedido quando o admin aprova a ONG. */
+    /** Selo de "verificada": toda ONG nasce com ele (não há etapa de aprovação). */
     @Column(name = "is_verified", nullable = false)
     @Builder.Default
     private Boolean verified = false;

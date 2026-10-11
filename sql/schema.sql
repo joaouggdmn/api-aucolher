@@ -72,7 +72,7 @@ CREATE TABLE IF NOT EXISTS users (
 
     CONSTRAINT uq_users_email                UNIQUE (email),
     CONSTRAINT uq_users_cnpj                 UNIQUE (cnpj),
-    CONSTRAINT chk_users_user_type           CHECK (user_type IN ('NGO', 'PERSON')),
+    CONSTRAINT chk_users_user_type           CHECK (user_type IN ('NGO', 'PERSON', 'ADMIN')),
     CONSTRAINT chk_users_provider            CHECK (provider IN ('LOCAL', 'GOOGLE')),
     CONSTRAINT chk_users_ngo_has_cnpj        CHECK (user_type <> 'NGO' OR cnpj IS NOT NULL),
     CONSTRAINT chk_users_local_has_password  CHECK (provider <> 'LOCAL' OR password IS NOT NULL),
@@ -81,13 +81,13 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE INDEX IF NOT EXISTS idx_users_user_type ON users (user_type);
 
-COMMENT ON TABLE  users                     IS 'Usuários da plataforma: ONGs/abrigos e usuários comuns';
+COMMENT ON TABLE  users                     IS 'Contas da plataforma: ONGs/abrigos, usuários comuns e administradores';
 COMMENT ON COLUMN users.password            IS 'Hash BCrypt — nulo para contas criadas via OAuth2 (Google)';
 COMMENT ON COLUMN users.photo_url           IS 'URL do avatar ou data URL da imagem comprimida no frontend (enquanto não há upload próprio)';
 COMMENT ON COLUMN users.bio                 IS 'Bio do usuário comum (cuidadores autônomos) ou descrição da ONG';
 COMMENT ON COLUMN users.cnpj                IS 'Apenas os 14 dígitos — obrigatório quando user_type = NGO';
 COMMENT ON COLUMN users.institutional_email IS 'Contato público da ONG (opcional), pode diferir do e-mail de login';
-COMMENT ON COLUMN users.is_verified         IS 'Selo de ONG verificada, concedido na aprovação pelo admin';
+COMMENT ON COLUMN users.is_verified         IS 'Selo de ONG verificada — toda ONG nasce com ele (sem etapa de aprovação)';
 COMMENT ON COLUMN users.instagram           IS 'Nome de usuário, sem @';
 COMMENT ON COLUMN users.twitter             IS 'Nome de usuário do X/Twitter, sem @';
 COMMENT ON COLUMN users.facebook            IS 'Link completo da página';
