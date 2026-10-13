@@ -68,6 +68,8 @@ public class SecurityConfig {
                 // AUmatch (quiz e deck): só pessoa física, que é quem adota.
                 // Sem token → 401; ONG ou admin → 403
                 .requestMatchers("/api/match/**").hasRole("PERSON")
+                // Pedido de adoção: pessoa ou ONG pedem; o admin não adota
+                .requestMatchers(HttpMethod.POST, "/api/adoption-requests").hasAnyRole("PERSON", "NGO")
                 .anyRequest().authenticated()
             )
             // Sem isto, uma requisição sem token para rota protegida seria
