@@ -1,0 +1,49 @@
+package com.aucolher.api.adoption;
+
+import com.aucolher.api.adoption.dto.AdoptionRequestDTO;
+import com.aucolher.api.adoption.dto.NewAdoptionRequestDTO;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+/**
+ * Pedidos de adoção da conta logada. Todas as rotas exigem token; enviar um
+ * pedido é só para pessoa ou ONG (regra na SecurityConfig).
+ */
+@RestController
+@RequestMapping("/api/adoption-requests")
+@RequiredArgsConstructor
+public class AdoptionRequestController {
+
+    private final AdoptionRequestService requestService;
+
+    @PostMapping
+    public ResponseEntity<AdoptionRequestDTO> create(@Valid @RequestBody NewAdoptionRequestDTO body,
+                                                     @AuthenticationPrincipal UserDetails loggedUser) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(requestService.create(loggedUser.getUsername(), body.animalId()));
+    }
+
+    /** Os pedidos que a conta enviou ("Meus interesses"). */
+    @GetMapping("/sent")
+    public ResponseEntity<List<AdoptionRequestDTO>> listSent(@AuthenticationPrincipal UserDetails loggedUser) {
+        return ResponseEntity.ok(requestService.listSent(loggedUser.getUsername()));
+    }
+
+    /** Os pedidos recebidos para os animais da conta. */
+    @GetMapping("/received")
+    public ResponseEntity<List<AdoptionRequestDTO>> listReceived(@AuthenticationPrincipal UserDetails loggedUser) {
+        return ResponseEntity.ok(requestService.listReceived(loggedUser.getUsername()));
+    }
+
+    /** Um pedido — só para o adotante ou o dono do animal. */
+    @GetMapping("/{id}")
+    public ResponseEntity<AdoptionRequestDTO> get(@PathVariable Long id, @AuthenticationPrincipal UserDetails loggedUser) {
+        return ResponseEntity.ok(requestService.get(id, loggedUser.getUsername()));
+    }
+}
