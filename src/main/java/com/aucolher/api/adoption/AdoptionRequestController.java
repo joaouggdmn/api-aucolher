@@ -1,6 +1,7 @@
 package com.aucolher.api.adoption;
 
 import com.aucolher.api.adoption.dto.AdoptionRequestDTO;
+import com.aucolher.api.adoption.dto.ChangeRequestStatusDTO;
 import com.aucolher.api.adoption.dto.NewAdoptionRequestDTO;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -45,5 +46,17 @@ public class AdoptionRequestController {
     @GetMapping("/{id}")
     public ResponseEntity<AdoptionRequestDTO> get(@PathVariable Long id, @AuthenticationPrincipal UserDetails loggedUser) {
         return ResponseEntity.ok(requestService.get(id, loggedUser.getUsername()));
+    }
+
+    /**
+     * Aceitar, recusar, confirmar entrega, confirmar chegada ou cancelar:
+     * `{ "status": "ACCEPTED" }`. A Service confere o papel de quem pede e o
+     * status de partida.
+     */
+    @PatchMapping("/{id}/status")
+    public ResponseEntity<AdoptionRequestDTO> changeStatus(@PathVariable Long id,
+                                                           @Valid @RequestBody ChangeRequestStatusDTO body,
+                                                           @AuthenticationPrincipal UserDetails loggedUser) {
+        return ResponseEntity.ok(requestService.changeStatus(id, loggedUser.getUsername(), body.status()));
     }
 }

@@ -86,4 +86,32 @@ public class AdoptionRequest {
     public boolean isAdopter(String email) {
         return email != null && email.equals(adopter.getEmail());
     }
+
+    // ===================== Transições (quem pode cada uma fica na Service) =====================
+
+    public void accept() {
+        status = AdoptionStatus.ACCEPTED;
+    }
+
+    public void requestDelivery() {
+        status = AdoptionStatus.AWAITING_DELIVERY;
+    }
+
+    public void reject() {
+        status = AdoptionStatus.REJECTED;
+        closedAt = LocalDateTime.now();
+    }
+
+    public void conclude() {
+        status = AdoptionStatus.CONCLUDED;
+        concludedAt = LocalDateTime.now();
+    }
+
+    /** Guarda de onde o pedido saiu: a tela mostra, por exemplo, "cancelado durante a entrega". */
+    public void cancel(CancelReason reason) {
+        cancelledFromStatus = status;
+        status = AdoptionStatus.CANCELLED;
+        cancelReason = reason;
+        closedAt = LocalDateTime.now();
+    }
 }
