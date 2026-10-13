@@ -1,6 +1,8 @@
 package com.aucolher.api.match;
 
 import com.aucolher.api.config.SecurityConfig;
+import com.aucolher.api.match.dto.MatchCardDTO;
+import com.aucolher.api.match.dto.MatchCriterionDTO;
 import com.aucolher.api.match.dto.MatchProfileDTO;
 import com.aucolher.api.match.entity.Housing;
 import com.aucolher.api.security.CustomOAuth2UserService;
@@ -15,6 +17,8 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
+
+import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
@@ -116,5 +120,30 @@ class MatchControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"housing\":\"CASTLE\"}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void deckRequiresLogin() throws Exception {
+        mockMvc.perform(get("/api/match/deck")).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @WithMockUser(username = "ngo@email.com", roles = "NGO")
+    void ngoCannotSeeTheDeck() throws Exception {
+        mockMvc.perform(get("/api/match/deck")).andExpect(status().isForbidden());
+        verify(matchService, never()).deck(any());
+    }
+
+    @Test
+    @WithMockUser(username = PERSON_EMAIL, roles = "PERSON")
+    void personGetsTheRankedDeck() throws Exception {
+        when(matchService.deck(PERSON_EMAIL)).thenReturn(List.of(new MatchCardDTO(null, 85,
+                List.of(new MatchCriterionDTO(MatchCriterion.ENERGY, 20, 20, true)))));
+
+        mockMvc.perform(get("/api/match/deck"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].matchScore").value(85))
+                .andExpect(jsonPath("$[0].criteria[0].key").value("ENERGY"))
+                .andExpect(jsonPath("$[0].criteria[0].maxPoints").value(20));
     }
 }
