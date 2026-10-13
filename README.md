@@ -1,6 +1,6 @@
 # AUcolher API — Plataforma de Adoção de Animais
 
-API REST em Spring Boot 3 / Java 17 do AUcolher: cadastro, login e autenticação (tradicional + OAuth2 Google) de dois perfis de usuário, **ONG** e **Usuário Comum**, edição do perfil ("Minha conta"), anúncios de animais para adoção e favoritos.
+API REST em Spring Boot 3 / Java 17 do AUcolher: cadastro, login e autenticação (tradicional + OAuth2 Google) de dois perfis de usuário, **ONG** e **Usuário Comum**, edição do perfil ("Minha conta"), anúncios de animais para adoção, favoritos e o **AUmatch** (quiz de estilo de vida e deck ordenado por compatibilidade).
 
 ## Stack
 
@@ -36,6 +36,13 @@ src/main/java/com/aucolher/api/
 │   ├── FavoriteService.java
 │   ├── FavoriteRepository.java
 │   └── entity/Favorite.java
+├── match/                                  # AUmatch: quiz da pessoa e deck por compatibilidade
+│   ├── MatchController.java
+│   ├── MatchService.java                   # Perfil do quiz e deck (filtra, pontua e ordena)
+│   ├── MatchScoreCalculator.java           # O algoritmo: 6 critérios que somam 100
+│   ├── MatchProfileRepository.java
+│   ├── entity/                             # MatchProfile + enums das respostas (Housing, TimeAway...)
+│   └── dto/                                # MatchProfileRequestDTO, MatchProfileDTO, MatchCardDTO, MatchCriterionDTO
 ├── shared/                                 # Comum a todas as funcionalidades
 │   ├── dto/PageDTO.java                    # Formato padrão das respostas paginadas
 │   ├── exception/                          # Exceções (400, 401, 403, 404), @RestControllerAdvice e ErrorResponseDTO
@@ -60,7 +67,7 @@ src/test/java/...                           # Testes (JUnit 5 + Mockito + MockMv
 psql -U postgres -h localhost -f sql/schema.sql
 ```
 
-O script cria o banco `aucolher_db` (se ainda não existir) e as tabelas `users`, `ngo_team`, `ngo_visiting_hours`, `animals`, `animal_photos` e `favorites`. Todas usam `IF NOT EXISTS`, então rodar o script de novo não apaga nada. É uma cópia de `docs/script_banco_aucolher.sql` do frontend — mantenha os dois iguais. Rode o script antes de subir a API: o Hibernate (`ddl-auto=validate`) não cria o banco nem as tabelas, só confere se elas batem com as entidades.
+O script cria o banco `aucolher_db` (se ainda não existir) e as tabelas `users`, `ngo_team`, `ngo_visiting_hours`, `animals`, `animal_photos`, `favorites` e `match_profiles`. Todas usam `IF NOT EXISTS`, então rodar o script de novo não apaga nada. É uma cópia de `docs/script_banco_aucolher.sql` do frontend — mantenha os dois iguais. Rode o script antes de subir a API: o Hibernate (`ddl-auto=validate`) não cria o banco nem as tabelas, só confere se elas batem com as entidades.
 
 #### Banco criado antes da padronização em inglês
 
@@ -82,6 +89,16 @@ psql -U postgres -h localhost -d aucolher_db -f sql/migrations/003_admin_and_ver
 ```
 
 Roda numa transação e pode ser repetida sem estragar nada. Banco novo, criado pelo `schema.sql` atual, não precisa dela.
+
+#### Perfil AUmatch (migração 004)
+
+Um banco criado antes do AUmatch no backend não tem a tabela `match_profiles`, e a API não sobe sem ela (`Schema-validation: missing table [match_profiles]`). Aplique a 004 uma vez:
+
+```bash
+psql -U postgres -h localhost -d aucolher_db -f sql/migrations/004_match_profiles.sql
+```
+
+Ela só cria a tabela nova (nenhum dado existente muda) e pode ser repetida. Banco novo, criado pelo `schema.sql` atual, não precisa dela.
 
 Depois de trazer as mudanças do Git, faça **Build → Rebuild Project** no IntelliJ (ou `mvn clean`): classes antigas compiladas (`Usuario`, `Animal` com campos em português) ficam na pasta `target/` e impedem a API de subir.
 
@@ -365,6 +382,79 @@ Todas exigem login.
 | `PUT /api/favorites/{animalId}` | Favorita. Repetir não duplica — responde 204 |
 | `DELETE /api/favorites/{animalId}` | Desfavorita — responde 204 |
 
+### AUmatch
+
+Só pessoa física (`PERSON`), que é quem adota: sem token responde 401, e ONG ou admin recebem 403.
+
+| Método e rota | O que faz |
+|---|---|
+| `GET /api/match/profile` | Respostas do quiz. Quem ainda não respondeu recebe tudo `null` e `complete: false` |
+| `PUT /api/match/profile` | Grava as respostas. Substituição completa: pergunta que não vier fica sem resposta |
+| `GET /api/match/deck` | Animais disponíveis, do maior para o menor score, com os pontos de cada critério |
+
+**Perfil** (corpo do `PUT` e resposta do `GET`):
+```json
+{
+  "housing": "APARTMENT",
+  "exerciseRoutine": "ACTIVE",
+  "timeAway": "REGULAR",
+  "hasChildren": true,
+  "hasDogs": false,
+  "hasCats": true,
+  "speciesPreference": "DOG",
+  "idealPetProfile": "CALM_COMPANION",
+  "preferredSize": "SMALL"
+}
+```
+
+A resposta traz também `complete`: `true` quando as 7 perguntas têm resposta.
+- Todos os campos são opcionais, porque "Minha conta" salva respostas soltas.
+- `hasChildren`, `hasDogs` e `hasCats` respondem juntos a "Quem mora com você?": vêm os três ou nenhum, senão a API responde 400 com `errors.householdValid`.
+- "Ninguém em casa" = os três `false`.
+
+| Campo | Valores |
+|---|---|
+| `housing` | `APARTMENT`, `HOUSE_WITH_YARD`, `FARM` |
+| `exerciseRoutine` | `SEDENTARY`, `ACTIVE`, `VERY_ACTIVE` |
+| `timeAway` | `SHORT` (até 4h), `REGULAR` (4h a 8h), `LONG` (mais de 8h) |
+| `speciesPreference` | `DOG`, `CAT`, `BOTH` |
+| `idealPetProfile` | `CALM_COMPANION`, `PLAYFUL_ACTIVE`, `PROTECTIVE_INDEPENDENT` |
+| `preferredSize` | `SMALL`, `MEDIUM`, `LARGE` |
+
+**Deck** — lista de cards, sem paginação:
+```json
+[
+  {
+    "animal": { "id": 12, "name": "Thor", "coverPhoto": "...", "independenceLevel": "HIGH", "...": "..." },
+    "matchScore": 85,
+    "criteria": [
+      { "key": "HOUSING", "points": 15, "maxPoints": 15, "answered": true },
+      { "key": "ENERGY", "points": 8, "maxPoints": 20, "answered": true }
+    ]
+  }
+]
+```
+
+- Entram os animais `AVAILABLE` de contas ativas, menos os da própria pessoa.
+- `speciesPreference` `DOG` ou `CAT` deixa só essa espécie; `BOTH` ou sem resposta mostra todas.
+- No empate de score, o anúncio mais recente vem primeiro.
+- `animal` é o mesmo card da listagem de animais.
+
+**O algoritmo** (`MatchScoreCalculator`) soma seis critérios, num total de 100:
+
+| Critério (`key`) | Máx | Regra |
+|---|---|---|
+| `HOUSING` | 15 | Apartamento: 15 se o animal é `apartmentFriendly`, senão 0. Casa, sítio ou sem resposta: 15 |
+| `ENERGY` | 20 | A rotina vira um nível (`SEDENTARY` LOW, `ACTIVE` MODERATE, `VERY_ACTIVE` HIGH), comparado com `energyLevel` |
+| `INDEPENDENCE` | 20 | O tempo fora vira um nível (`SHORT` LOW, `REGULAR` MODERATE, `LONG` HIGH), comparado com `independenceLevel` |
+| `LIVING` | 15 | Cada grupo em casa (crianças, cães, gatos) precisa do `goodWith...` correspondente: 15 × compatíveis ÷ grupos. Ninguém ou sem resposta: 15 |
+| `TEMPERAMENT` | 15 | `CALM_COMPANION` aceita CALM ou AFFECTIONATE; `PLAYFUL_ACTIVE`, PLAYFUL; `PROTECTIVE_INDEPENDENT`, PROTECTIVE ou INDEPENDENT |
+| `SIZE` | 15 | `preferredSize` comparado com `size`. Sem porte preferido, quem mora em apartamento conta como `SMALL` |
+
+- Nas escalas (energia, independência e porte), igual vale o máximo, vizinho vale 40% (8 ou 6 pontos) e oposto vale 0.
+- Os demais critérios sem resposta valem 0, então quem ainda não fez o quiz começa com 30.
+- O frontend tem uma cópia do cálculo em `features/aumatch/utils/matchScore.js`: ao mudar uma regra, mude as duas.
+
 ## Decisões de projeto
 
 - **Código em inglês, textos em português**: classes, campos, JSON, rotas, valores de enum, tabelas e colunas usam inglês, o padrão de mercado. Mensagens de erro (lidas pelo usuário final), comentários e documentação ficam em português. Termos brasileiros sem tradução exata (`cnpj`, `cep`) mantêm o nome.
@@ -383,3 +473,6 @@ Todas exigem login.
 - **Exclusão lógica de animais**: `DELETE` só muda o status para `INACTIVE`, preservando o histórico (favoritos e, no futuro, pedidos de adoção).
 - **Cards leves**: a listagem busca só a foto de capa (numa consulta única) e carrega o dono junto, então uma página custa duas consultas SQL, com payload pequeno mesmo com fotos em data URL.
 - **Favoritar é idempotente no banco**: `INSERT ... ON CONFLICT DO NOTHING` garante um favorito por par usuário/animal mesmo com cliques simultâneos.
+- **Score do AUmatch no backend**: o algoritmo roda na API (`MatchScoreCalculator`, coberto por testes) e o deck já chega ordenado. Como o score depende de cada animal, não dá para ordenar no banco: o deck carrega os candidatos e ordena em memória, sem paginação, o que basta para o volume do projeto.
+- **Perfil AUmatch em tabela própria** (`match_profiles`, 1:1 com `users`): o quiz é só de pessoa física e pode mudar sem mexer no cadastro.
+- **Swipes não são gravados**: o "passar" vale só na sessão do navegador, e o "curtir" ainda vira um pedido de adoção no frontend. Quando os pedidos de adoção vierem para a API, o deck passa a esconder os animais já pedidos.
