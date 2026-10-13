@@ -13,6 +13,7 @@ import com.aucolher.api.shared.exception.ResourceNotFoundException;
 import com.aucolher.api.user.UserRepository;
 import com.aucolher.api.user.entity.User;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -35,6 +36,7 @@ public class AnimalService {
 
     private final AnimalRepository animalRepository;
     private final UserRepository userRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * Qualquer conta (ONG ou usuário comum) pode anunciar, desde que tenha
@@ -140,7 +142,8 @@ public class AnimalService {
 
     /**
      * Muda o status do anúncio: marcar como adotado, tirar do ar (INACTIVE) ou
-     * voltar a AVAILABLE. ADOPTED é definitivo.
+     * voltar a AVAILABLE. ADOPTED é definitivo. Saindo da vitrine, os pedidos
+     * de adoção ativos do animal são cancelados (AnimalLeftListingEvent).
      */
     @Transactional
     public AnimalDetailDTO changeStatus(Long id, String ownerEmail, AnimalStatus newStatus) {
@@ -154,6 +157,9 @@ public class AnimalService {
         }
 
         animal.setStatus(newStatus);
+        if (newStatus != AnimalStatus.AVAILABLE) {
+            eventPublisher.publishEvent(new AnimalLeftListingEvent(animal.getId()));
+        }
         return saveAndRespond(animal);
     }
 

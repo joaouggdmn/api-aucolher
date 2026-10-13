@@ -4,6 +4,7 @@ import com.aucolher.api.adoption.entity.AdoptionRequest;
 import com.aucolher.api.adoption.entity.AdoptionStatus;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 
 import java.util.Collection;
 import java.util.List;
@@ -28,6 +29,13 @@ public interface AdoptionRequestRepository extends JpaRepository<AdoptionRequest
 
     /** O pedido que impede um novo: qualquer um que não esteja cancelado. */
     Optional<AdoptionRequest> findFirstByAdopterIdAndAnimalIdAndStatusNot(Long adopterId, Long animalId, AdoptionStatus status);
+
+    /**
+     * Animais que a pessoa já pediu e não pode pedir de novo (qualquer pedido
+     * não cancelado) — o deck do AUmatch esconde esses.
+     */
+    @Query("SELECT r.animal.id FROM AdoptionRequest r WHERE r.adopter.id = :adopterId AND r.status <> :ignored")
+    List<Long> findRequestedAnimalIds(Long adopterId, AdoptionStatus ignored);
 
     /** Pedidos de um animal nos status dados — usado para cancelar os ativos. */
     List<AdoptionRequest> findByAnimalIdAndStatusIn(Long animalId, Collection<AdoptionStatus> statuses);
