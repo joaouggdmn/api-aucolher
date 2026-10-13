@@ -65,6 +65,9 @@ public class SecurityConfig {
                 // Painel do admin: só a conta ADMIN (a autoridade ROLE_ADMIN vem do
                 // CustomUserDetailsService). Sem token → 401; logado sem ser admin → 403
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                // AUmatch (quiz e deck): só pessoa física, que é quem adota.
+                // Sem token → 401; ONG ou admin → 403
+                .requestMatchers("/api/match/**").hasRole("PERSON")
                 .anyRequest().authenticated()
             )
             // Sem isto, uma requisição sem token para rota protegida seria
