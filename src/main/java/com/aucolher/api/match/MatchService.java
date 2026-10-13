@@ -1,5 +1,7 @@
 package com.aucolher.api.match;
 
+import com.aucolher.api.adoption.AdoptionRequestRepository;
+import com.aucolher.api.adoption.entity.AdoptionStatus;
 import com.aucolher.api.animal.AnimalRepository;
 import com.aucolher.api.animal.AnimalService;
 import com.aucolher.api.animal.dto.AnimalSummaryDTO;
@@ -18,8 +20,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -40,6 +44,7 @@ public class MatchService {
     private final AnimalRepository animalRepository;
     private final AnimalService animalService;
     private final UserRepository userRepository;
+    private final AdoptionRequestRepository adoptionRequestRepository;
 
     @Transactional(readOnly = true)
     public MatchProfileDTO getProfile(String email) {
@@ -60,7 +65,8 @@ public class MatchService {
 
     /**
      * O deck inteiro, do maior score para o menor: animais disponíveis, de
-     * contas ativas, da espécie procurada e que não sejam da própria pessoa.
+     * contas ativas, da espécie procurada, que não sejam da própria pessoa e
+     * que ela ainda não pediu (recusado não volta; cancelado volta).
      * Quem ainda não fez o quiz recebe o deck com o score de base.
      *
      * Volta tudo de uma vez, sem paginação — o score depende de cada animal,
@@ -71,9 +77,12 @@ public class MatchService {
     public List<MatchCardDTO> deck(String email) {
         User user = findUser(email);
         MatchProfile profile = matchProfileRepository.findById(user.getId()).orElse(null);
+        Set<Long> requested = new HashSet<>(
+                adoptionRequestRepository.findRequestedAnimalIds(user.getId(), AdoptionStatus.CANCELLED));
 
         List<Animal> candidates = animalRepository
                 .findByStatusAndOwnerActiveTrueAndOwnerIdNot(AnimalStatus.AVAILABLE, user.getId()).stream()
+                .filter(animal -> !requested.contains(animal.getId()))
                 .filter(animal -> isWantedSpecies(profile, animal))
                 .toList();
 

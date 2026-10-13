@@ -5,6 +5,7 @@ import com.aucolher.api.adoption.dto.AdoptionRequestDTO;
 import com.aucolher.api.adoption.entity.AdoptionRequest;
 import com.aucolher.api.adoption.entity.AdoptionStatus;
 import com.aucolher.api.adoption.entity.CancelReason;
+import com.aucolher.api.animal.AnimalLeftListingEvent;
 import com.aucolher.api.animal.AnimalRepository;
 import com.aucolher.api.animal.AnimalService;
 import com.aucolher.api.animal.dto.AnimalSummaryDTO;
@@ -21,6 +22,7 @@ import com.aucolher.api.user.entity.User;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.event.EventListener;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -181,6 +183,16 @@ public class AdoptionRequestService {
                 .filter(other -> !other.getId().equals(request.getId()))
                 .forEach(other -> other.cancel(CancelReason.ANIMAL_ADOPTED));
         animal.setStatus(AnimalStatus.ADOPTED);
+    }
+
+    /**
+     * O dono tirou o animal da vitrine por conta própria: os pedidos ativos
+     * dele são cancelados (ANIMAL_UNAVAILABLE). Roda na mesma transação.
+     */
+    @EventListener
+    public void onAnimalLeftListing(AnimalLeftListingEvent event) {
+        requestRepository.findByAnimalIdAndStatusIn(event.animalId(), AdoptionStatus.ACTIVE)
+                .forEach(request -> request.cancel(CancelReason.ANIMAL_UNAVAILABLE));
     }
 
     private static void requireRole(boolean hasRole, String message) {

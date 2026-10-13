@@ -4,6 +4,7 @@ import com.aucolher.api.adoption.dto.AdoptionRequestDTO;
 import com.aucolher.api.adoption.entity.AdoptionRequest;
 import com.aucolher.api.adoption.entity.AdoptionStatus;
 import com.aucolher.api.adoption.entity.CancelReason;
+import com.aucolher.api.animal.AnimalLeftListingEvent;
 import com.aucolher.api.animal.AnimalRepository;
 import com.aucolher.api.animal.AnimalService;
 import com.aucolher.api.animal.dto.AnimalSummaryDTO;
@@ -173,6 +174,21 @@ class AdoptionTransitionsTest {
         assertThatThrownBy(() -> requestService.changeStatus(50L, ADOPTER_EMAIL, AdoptionStatus.CONCLUDED))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("já foi adotado");
+    }
+
+    @Test
+    void animalLeavingTheListingCancelsItsActiveRequests() {
+        AdoptionRequest pending = otherRequest(51L, AdoptionStatus.PENDING);
+        AdoptionRequest awaiting = otherRequest(52L, AdoptionStatus.AWAITING_DELIVERY);
+        when(requestRepository.findByAnimalIdAndStatusIn(10L, AdoptionStatus.ACTIVE)).thenReturn(List.of(pending, awaiting));
+
+        requestService.onAnimalLeftListing(new AnimalLeftListingEvent(10L));
+
+        assertThat(List.of(pending, awaiting)).allSatisfy(request -> {
+            assertThat(request.getStatus()).isEqualTo(AdoptionStatus.CANCELLED);
+            assertThat(request.getCancelReason()).isEqualTo(CancelReason.ANIMAL_UNAVAILABLE);
+        });
+        assertThat(awaiting.getCancelledFromStatus()).isEqualTo(AdoptionStatus.AWAITING_DELIVERY);
     }
 
     // ===================== Fixtures =====================
