@@ -42,6 +42,8 @@ class AdoptionRequestServiceTest {
     @Mock
     private AdoptionRequestRepository requestRepository;
     @Mock
+    private AdoptionReviewRepository reviewRepository;
+    @Mock
     private AnimalRepository animalRepository;
     @Mock
     private AnimalService animalService;

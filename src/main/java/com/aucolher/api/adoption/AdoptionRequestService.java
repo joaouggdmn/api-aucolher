@@ -2,9 +2,13 @@ package com.aucolher.api.adoption;
 
 import com.aucolher.api.adoption.dto.AdopterDTO;
 import com.aucolher.api.adoption.dto.AdoptionRequestDTO;
+import com.aucolher.api.adoption.dto.RequestReviewsDTO;
+import com.aucolher.api.adoption.dto.ReviewDTO;
+import com.aucolher.api.adoption.entity.AdoptionReview;
 import com.aucolher.api.adoption.entity.AdoptionRequest;
 import com.aucolher.api.adoption.entity.AdoptionStatus;
 import com.aucolher.api.adoption.entity.CancelReason;
+import com.aucolher.api.adoption.entity.ReviewRole;
 import com.aucolher.api.animal.AnimalLeftListingEvent;
 import com.aucolher.api.animal.AnimalRepository;
 import com.aucolher.api.animal.AnimalService;
@@ -43,6 +47,7 @@ import java.util.stream.Collectors;
 public class AdoptionRequestService {
 
     private final AdoptionRequestRepository requestRepository;
+    private final AdoptionReviewRepository reviewRepository;
     private final AnimalRepository animalRepository;
     private final AnimalService animalService;
     private final MatchProfileRepository matchProfileRepository;
@@ -210,7 +215,8 @@ public class AdoptionRequestService {
 
     /**
      * Monta os pedidos com o card do animal (as capas numa consulta só), as
-     * respostas do quiz de cada adotante e o score de compatibilidade atual.
+     * respostas do quiz de cada adotante, o score de compatibilidade atual e
+     * as avaliações.
      */
     List<AdoptionRequestDTO> toDtos(List<AdoptionRequest> requests) {
         if (requests.isEmpty()) return List.of();
@@ -225,14 +231,26 @@ public class AdoptionRequestService {
         Map<Long, MatchProfile> profiles = matchProfileRepository.findAllById(adopterIds).stream()
                 .collect(Collectors.toMap(MatchProfile::getUserId, Function.identity()));
 
+        Map<Long, List<AdoptionReview>> reviews = reviewRepository
+                .findByRequestIdIn(requests.stream().map(AdoptionRequest::getId).toList()).stream()
+                .collect(Collectors.groupingBy(review -> review.getRequest().getId()));
+
         return requests.stream().map(request -> {
             MatchProfile profile = profiles.get(request.getAdopter().getId());
             return AdoptionRequestDTO.of(
                     request,
                     cards.get(request.getAnimal().getId()),
                     AdopterDTO.from(request.getAdopter(), profile),
-                    MatchScoreCalculator.score(profile, request.getAnimal()).score());
+                    MatchScoreCalculator.score(profile, request.getAnimal()).score(),
+                    reviewsOf(reviews.getOrDefault(request.getId(), List.of())));
         }).toList();
+    }
+
+    private static RequestReviewsDTO reviewsOf(List<AdoptionReview> reviews) {
+        if (reviews.isEmpty()) return RequestReviewsDTO.NONE;
+        return new RequestReviewsDTO(
+                reviews.stream().filter(review -> review.getAuthorRole() == ReviewRole.ADOPTER).findFirst().map(ReviewDTO::from).orElse(null),
+                reviews.stream().filter(review -> review.getAuthorRole() == ReviewRole.OWNER).findFirst().map(ReviewDTO::from).orElse(null));
     }
 
     private User findUser(String email) {
