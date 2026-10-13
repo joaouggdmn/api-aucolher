@@ -352,7 +352,7 @@ Filtros: `search` (nome, raça ou cidade), `species`, `sizes`, `sexes`, `ageGrou
 }
 ```
 
-Os cards (listagem, meus animais, perfil e favoritos) trazem só a `coverPhoto` e não trazem a `story` — a página de detalhes busca o animal completo.
+Os cards (listagem, meus animais, perfil e favoritos) trazem só a `coverPhoto` e não trazem a `story` nem a `vocalization` — a página de detalhes busca o animal completo. O `independenceLevel` vem no card porque entra no cálculo de compatibilidade do AUmatch.
 
 ### Favoritos
 
