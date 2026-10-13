@@ -4,6 +4,7 @@ import com.aucolher.api.adoption.dto.AdopterDTO;
 import com.aucolher.api.adoption.dto.AdoptionRequestDTO;
 import com.aucolher.api.adoption.entity.AdoptionRequest;
 import com.aucolher.api.adoption.entity.AdoptionStatus;
+import com.aucolher.api.adoption.entity.CancelReason;
 import com.aucolher.api.animal.AnimalRepository;
 import com.aucolher.api.animal.AnimalService;
 import com.aucolher.api.animal.dto.AnimalSummaryDTO;
@@ -17,11 +18,14 @@ import com.aucolher.api.shared.exception.ForbiddenException;
 import com.aucolher.api.shared.exception.ResourceNotFoundException;
 import com.aucolher.api.user.UserRepository;
 import com.aucolher.api.user.entity.User;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -41,6 +45,7 @@ public class AdoptionRequestService {
     private final AnimalService animalService;
     private final MatchProfileRepository matchProfileRepository;
     private final UserRepository userRepository;
+    private final EntityManager entityManager;
 
     /**
      * Novo pedido (PENDING). O animal precisa estar disponível e não ser de
@@ -94,6 +99,96 @@ public class AdoptionRequestService {
             throw new ForbiddenException("Só quem participa do pedido pode vê-lo");
         }
         return toDtos(List.of(request)).get(0);
+    }
+
+    /**
+     * Muda o status de um pedido. Cada transição tem dono certo e status de
+     * partida certo — papel errado responde 403, status errado responde 400:
+     * - dono: PENDING → ACCEPTED ou REJECTED; ACCEPTED → AWAITING_DELIVERY;
+     *   ACCEPTED/AWAITING_DELIVERY → CANCELLED (desistiu);
+     * - adotante: AWAITING_DELIVERY → CONCLUDED; qualquer ativo → CANCELLED (desistiu).
+     * Repetir o status atual não muda nada (clique duplo).
+     */
+    @Transactional
+    public AdoptionRequestDTO changeStatus(Long id, String email, AdoptionStatus target) {
+        AdoptionRequest request = findRequest(id);
+        boolean isOwner = request.isOwnedBy(email);
+        boolean isAdopter = request.isAdopter(email);
+        if (!isOwner && !isAdopter) {
+            throw new ForbiddenException("Só quem participa do pedido pode alterá-lo");
+        }
+        if (request.getStatus() == target) {
+            return toDtos(List.of(request)).get(0);
+        }
+
+        switch (target) {
+            case ACCEPTED -> {
+                requireRole(isOwner, "Só o dono do animal pode aceitar o pedido");
+                requireStatus(request, "Só um pedido pendente pode ser aceito", AdoptionStatus.PENDING);
+                request.accept();
+            }
+            case REJECTED -> {
+                requireRole(isOwner, "Só o dono do animal pode recusar o pedido");
+                requireStatus(request, "Só um pedido pendente pode ser recusado", AdoptionStatus.PENDING);
+                request.reject();
+            }
+            case AWAITING_DELIVERY -> {
+                requireRole(isOwner, "Só o dono do animal confirma a entrega");
+                requireStatus(request, "Só um pedido aceito pode ir para a entrega", AdoptionStatus.ACCEPTED);
+                request.requestDelivery();
+            }
+            case CONCLUDED -> {
+                requireRole(isAdopter, "Só quem adotou confirma a chegada do pet");
+                requireStatus(request, "A chegada só é confirmada depois que o dono confirmar a entrega",
+                        AdoptionStatus.AWAITING_DELIVERY);
+                conclude(request);
+            }
+            case CANCELLED -> {
+                if (isAdopter) {
+                    requireStatus(request, "Este pedido já foi encerrado", AdoptionStatus.PENDING,
+                            AdoptionStatus.ACCEPTED, AdoptionStatus.AWAITING_DELIVERY);
+                    request.cancel(CancelReason.ADOPTER_WITHDREW);
+                } else {
+                    // Pendente o dono não cancela: recusa
+                    requireStatus(request, "Para um pedido pendente, use Recusar",
+                            AdoptionStatus.ACCEPTED, AdoptionStatus.AWAITING_DELIVERY);
+                    request.cancel(CancelReason.OWNER_WITHDREW);
+                }
+            }
+            case PENDING -> throw new BusinessException("Um pedido não volta a ficar pendente");
+        }
+
+        return toDtos(List.of(requestRepository.saveAndFlush(request))).get(0);
+    }
+
+    /**
+     * Fecha a adoção numa transação só: o pedido é concluído, o animal vira
+     * ADOPTED e os outros pedidos ativos dele são cancelados (ANIMAL_ADOPTED).
+     * A linha do animal fica travada (FOR UPDATE) até o fim — se dois
+     * adotantes confirmarem ao mesmo tempo, o segundo encontra o animal já
+     * adotado e o próprio pedido já cancelado.
+     */
+    private void conclude(AdoptionRequest request) {
+        Animal animal = request.getAnimal();
+        entityManager.refresh(animal, LockModeType.PESSIMISTIC_WRITE);
+        entityManager.refresh(request);
+        if (animal.getStatus() != AnimalStatus.AVAILABLE || request.getStatus() != AdoptionStatus.AWAITING_DELIVERY) {
+            throw new BusinessException("Este animal já foi adotado");
+        }
+
+        request.conclude();
+        requestRepository.findByAnimalIdAndStatusIn(animal.getId(), AdoptionStatus.ACTIVE).stream()
+                .filter(other -> !other.getId().equals(request.getId()))
+                .forEach(other -> other.cancel(CancelReason.ANIMAL_ADOPTED));
+        animal.setStatus(AnimalStatus.ADOPTED);
+    }
+
+    private static void requireRole(boolean hasRole, String message) {
+        if (!hasRole) throw new ForbiddenException(message);
+    }
+
+    private static void requireStatus(AdoptionRequest request, String message, AdoptionStatus... allowed) {
+        if (!Arrays.asList(allowed).contains(request.getStatus())) throw new BusinessException(message);
     }
 
     AdoptionRequest findRequest(Long id) {

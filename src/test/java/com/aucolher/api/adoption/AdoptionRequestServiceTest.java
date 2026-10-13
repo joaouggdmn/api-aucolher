@@ -14,6 +14,7 @@ import com.aucolher.api.shared.exception.ResourceNotFoundException;
 import com.aucolher.api.user.UserRepository;
 import com.aucolher.api.user.entity.User;
 import com.aucolher.api.user.entity.UserType;
+import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -48,6 +49,8 @@ class AdoptionRequestServiceTest {
     private MatchProfileRepository matchProfileRepository;
     @Mock
     private UserRepository userRepository;
+    @Mock
+    private EntityManager entityManager;
 
     @InjectMocks
     private AdoptionRequestService requestService;
