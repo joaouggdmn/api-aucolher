@@ -1,5 +1,6 @@
 package com.aucolher.api.adoption;
 
+import com.aucolher.api.adoption.dto.AdminAdoptionRequestDTO;
 import com.aucolher.api.adoption.dto.AdoptionRequestDTO;
 import com.aucolher.api.adoption.entity.AdoptionRequest;
 import com.aucolher.api.adoption.entity.AdoptionStatus;
@@ -148,6 +149,24 @@ class AdoptionRequestServiceTest {
         when(requestRepository.findWithDetailsById(50L)).thenReturn(Optional.of(request));
 
         assertThatThrownBy(() -> requestService.get(50L, OTHER_EMAIL)).isInstanceOf(ForbiddenException.class);
+    }
+
+    @Test
+    void adminListShowsEveryRequestWithTheAnimalCover() {
+        Animal animal = animal(AnimalStatus.AVAILABLE);
+        when(requestRepository.findAllByOrderByCreatedAtDescIdDesc())
+                .thenReturn(List.of(request(animal, adopter(), AdoptionStatus.CONCLUDED)));
+        AnimalRepository.CoverPhoto cover = mock(AnimalRepository.CoverPhoto.class);
+        when(cover.getAnimalId()).thenReturn(10L);
+        when(cover.getUrl()).thenReturn("https://fotos/thor.jpg");
+        when(animalRepository.findCoverPhotos(List.of(10L))).thenReturn(List.of(cover));
+
+        List<AdminAdoptionRequestDTO> all = requestService.listAllForAdmin();
+
+        assertThat(all).hasSize(1);
+        assertThat(all.get(0).owner().userType()).isEqualTo(UserType.NGO);
+        assertThat(all.get(0).adopter().id()).isEqualTo(1L);
+        assertThat(all.get(0).animal().coverPhoto()).isEqualTo("https://fotos/thor.jpg");
     }
 
     // ===================== Fixtures =====================
