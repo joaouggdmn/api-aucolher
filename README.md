@@ -379,7 +379,7 @@ Todas exigem login.
 - **JWT mínimo**: o token carrega apenas o e-mail (subject) e a validade. Papel e id não viram claim para não circular desatualizados — quem responde por eles é o banco, relido a cada requisição autenticada.
 - **`ddl-auto=validate`**: o schema vem do `sql/schema.sql`; o Hibernate só confere se o banco bate com as entidades, em vez de alterar tabelas sozinho. Mudanças em bancos já existentes vão em `sql/migrations/`, numeradas e transacionais.
 - **Constraints de banco** (`CHECK`) reforçam no schema.sql as mesmas regras já validadas na aplicação (ONG exige CNPJ; contas LOCAL exigem senha; valores dos enums dos animais) como camada extra de integridade.
-- **Localização do animal = a do dono**: `animals` não tem cidade/UF; a listagem filtra pelo endereço do perfil de quem anunciou. Filtro por distância ("perto de mim") fica para quando `users` tiver latitude/longitude.
+- **Localização do animal = a do dono**: `animals` não tem cidade/UF; a listagem filtra pelo endereço do perfil de quem anunciou. **Sem geolocalização por decisão do projeto**: nem `users` nem `animals` guardam latitude/longitude, e não há filtro nem ordenação por distância ("perto de mim"). A busca por local é só por cidade/UF.
 - **Exclusão lógica de animais**: `DELETE` só muda o status para `INACTIVE`, preservando o histórico (favoritos e, no futuro, pedidos de adoção).
 - **Cards leves**: a listagem busca só a foto de capa (numa consulta única) e carrega o dono junto, então uma página custa duas consultas SQL, com payload pequeno mesmo com fotos em data URL.
 - **Favoritar é idempotente no banco**: `INSERT ... ON CONFLICT DO NOTHING` garante um favorito por par usuário/animal mesmo com cliques simultâneos.
