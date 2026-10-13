@@ -1,5 +1,6 @@
 package com.aucolher.api.adoption;
 
+import com.aucolher.api.adoption.dto.AdminAdoptionRequestDTO;
 import com.aucolher.api.adoption.dto.AdopterDTO;
 import com.aucolher.api.adoption.dto.AdoptionRequestDTO;
 import com.aucolher.api.adoption.dto.RequestReviewsDTO;
@@ -97,6 +98,21 @@ public class AdoptionRequestService {
     @Transactional(readOnly = true)
     public List<AdoptionRequestDTO> listReceived(String email) {
         return toDtos(requestRepository.findByAnimalOwnerIdOrderByCreatedAtDescIdDesc(findUser(email).getId()));
+    }
+
+    /** Painel do admin: todos os pedidos, enxutos, com a foto de capa de cada animal numa consulta só. */
+    @Transactional(readOnly = true)
+    public List<AdminAdoptionRequestDTO> listAllForAdmin() {
+        List<AdoptionRequest> requests = requestRepository.findAllByOrderByCreatedAtDescIdDesc();
+        if (requests.isEmpty()) return List.of();
+
+        List<Long> animalIds = requests.stream().map(request -> request.getAnimal().getId()).distinct().toList();
+        Map<Long, String> covers = animalRepository.findCoverPhotos(animalIds).stream()
+                .collect(Collectors.toMap(AnimalRepository.CoverPhoto::getAnimalId, AnimalRepository.CoverPhoto::getUrl));
+
+        return requests.stream()
+                .map(request -> AdminAdoptionRequestDTO.from(request, covers.get(request.getAnimal().getId())))
+                .toList();
     }
 
     @Transactional(readOnly = true)

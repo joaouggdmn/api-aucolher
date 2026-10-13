@@ -27,6 +27,10 @@ public interface AdoptionRequestRepository extends JpaRepository<AdoptionRequest
     @EntityGraph(attributePaths = {"animal", "animal.owner", "adopter"})
     Optional<AdoptionRequest> findWithDetailsById(Long id);
 
+    /** Painel do admin: todos os pedidos da plataforma. */
+    @EntityGraph(attributePaths = {"animal", "animal.owner", "adopter"})
+    List<AdoptionRequest> findAllByOrderByCreatedAtDescIdDesc();
+
     /** O pedido que impede um novo: qualquer um que não esteja cancelado. */
     Optional<AdoptionRequest> findFirstByAdopterIdAndAnimalIdAndStatusNot(Long adopterId, Long animalId, AdoptionStatus status);
 
