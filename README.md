@@ -1,6 +1,6 @@
 # AUcolher API — Plataforma de Adoção de Animais
 
-API REST em Spring Boot 3 / Java 17 do AUcolher: cadastro, login e autenticação (tradicional + OAuth2 Google) de dois perfis de usuário, **ONG** e **Usuário Comum**, edição do perfil ("Minha conta"), anúncios de animais para adoção, favoritos, o **AUmatch** (quiz de estilo de vida e deck ordenado por compatibilidade) e os **pedidos de adoção**, com avaliações depois da adoção concluída.
+API REST em Spring Boot 3 / Java 17 do AUcolher: cadastro, login e autenticação (tradicional + OAuth2 Google) de dois perfis de usuário, **ONG** e **Usuário Comum**, edição do perfil ("Minha conta"), anúncios de animais para adoção, favoritos, **eventos** das ONGs (com confirmação de presença), o **AUmatch** (quiz de estilo de vida e deck ordenado por compatibilidade) e os **pedidos de adoção**, com avaliações depois da adoção concluída.
 
 ## Stack
 
@@ -36,6 +36,12 @@ src/main/java/com/aucolher/api/
 │   ├── FavoriteService.java
 │   ├── FavoriteRepository.java
 │   └── entity/Favorite.java
+├── event/                                  # Eventos das ONGs e confirmação de presença
+│   ├── EventController.java
+│   ├── EventService.java                   # Regras: só a ONG dona altera, capacidade, evento passado não muda
+│   ├── EventRepository.java / EventAttendanceRepository.java
+│   ├── entity/                             # Event, EventAttendance + EventCategory, EventStatus
+│   └── dto/                                # EventRequestDTO, EventResponseDTO, AttendeeDTO, NgoSummaryDTO...
 ├── match/                                  # AUmatch: quiz da pessoa e deck por compatibilidade
 │   ├── MatchController.java
 │   ├── MatchService.java                   # Perfil do quiz e deck (filtra, pontua e ordena)
@@ -77,7 +83,7 @@ src/test/java/...                           # Testes (JUnit 5 + Mockito + MockMv
 psql -U postgres -h localhost -f sql/schema.sql
 ```
 
-O script cria o banco `aucolher_db` (se ainda não existir) e as tabelas `users`, `ngo_team`, `ngo_visiting_hours`, `animals`, `animal_photos`, `favorites`, `match_profiles`, `adoption_requests` e `adoption_reviews`. Todas usam `IF NOT EXISTS`, então rodar o script de novo não apaga nada. É uma cópia de `docs/script_banco_aucolher.sql` do frontend — mantenha os dois iguais. Rode o script antes de subir a API: o Hibernate (`ddl-auto=validate`) não cria o banco nem as tabelas, só confere se elas batem com as entidades.
+O script cria o banco `aucolher_db` (se ainda não existir) e as tabelas `users`, `ngo_team`, `ngo_visiting_hours`, `animals`, `animal_photos`, `favorites`, `match_profiles`, `adoption_requests`, `adoption_reviews`, `events` e `event_attendances`. Todas usam `IF NOT EXISTS`, então rodar o script de novo não apaga nada. É uma cópia de `docs/script_banco_aucolher.sql` do frontend — mantenha os dois iguais. Rode o script antes de subir a API: o Hibernate (`ddl-auto=validate`) não cria o banco nem as tabelas, só confere se elas batem com as entidades.
 
 #### Banco criado antes da padronização em inglês
 
@@ -119,6 +125,16 @@ psql -U postgres -h localhost -d aucolher_db -f sql/migrations/005_adoption_requ
 ```
 
 Também só cria tabelas novas e pode ser repetida.
+
+#### Eventos (migração 006)
+
+A 006 cria `events` e `event_attendances`, que até aqui existiam só no navegador (mock do frontend). Sem elas a API não sobe (`Schema-validation: missing table [events]`):
+
+```bash
+psql -U postgres -h localhost -d aucolher_db -f sql/migrations/006_events.sql
+```
+
+Só cria tabelas novas e pode ser repetida.
 
 Depois de trazer as mudanças do Git, faça **Build → Rebuild Project** no IntelliJ (ou `mvn clean`): classes antigas compiladas (`Usuario`, `Animal` com campos em português) ficam na pasta `target/` e impedem a API de subir.
 
@@ -402,6 +418,23 @@ Todas exigem login.
 | `PUT /api/favorites/{animalId}` | Favorita. Repetir não duplica — responde 204 |
 | `DELETE /api/favorites/{animalId}` | Desfavorita — responde 204 |
 
+### Eventos
+
+| Método e rota | Quem acessa | O que faz |
+|---|---|---|
+| `GET /api/events?ngoId=` | Público | Eventos ativos de hoje em diante; `ngoId` filtra por ONG |
+| `GET /api/events/{id}` | Público | Detalhe; evento passado abre normalmente |
+| `GET /api/events/mine` | ONG | Eventos da ONG logada, inclusive os passados |
+| `GET /api/events/attending` | Logado | Eventos em que a pessoa confirmou presença (passados e cancelados inclusos) |
+| `POST /api/events` | ONG | Cria o evento — 201 |
+| `PUT /api/events/{id}` | ONG dona | Substitui todos os campos |
+| `DELETE /api/events/{id}` | ONG dona | Exclui; com confirmados vira `CANCELLED` — 204 |
+| `GET /api/events/{id}/attendees` | ONG dona | Lista de confirmados |
+| `POST /api/events/{id}/attendance` | Logado | Confirma presença (idempotente) e devolve o evento |
+| `DELETE /api/events/{id}/attendance` | Logado | Cancela a presença (idempotente) |
+
+Categorias: `ADOPTION_FAIR`, `HEALTH`, `BAZAAR`, `WORKSHOP`. A data não pode estar no passado, o término precisa ser depois do início, a capacidade não pode ficar abaixo dos confirmados, e a ONG não confirma presença no próprio evento.
+
 ### Pedidos de adoção
 
 Todas exigem login. Enviar um pedido é para **pessoa ou ONG** (o admin recebe 403). O dono do pedido é sempre o dono do animal.
@@ -584,4 +617,6 @@ A resposta traz também `complete`: `true` quando as 7 perguntas têm resposta.
 - **Concluir trava o animal**: a conclusão lê o animal com `SELECT ... FOR UPDATE`. Se dois adotantes confirmarem a chegada ao mesmo tempo, o segundo encontra o animal já adotado e o próprio pedido já cancelado.
 - **Pedidos sem dependência circular**: tirar o animal do ar publica um `AnimalLeftListingEvent`, e o módulo de pedidos cancela os ativos na mesma transação — o `AnimalService` não conhece os pedidos.
 - **Sem cópia congelada**: o pedido lê o adotante, o animal e as respostas do quiz ao vivo, então o dono vê sempre a compatibilidade atual.
+- **Vagas de evento sem corrida**: confirmar presença, editar e excluir leem o evento com `SELECT ... FOR UPDATE`, então dois cliques ao mesmo tempo não passam da capacidade.
+- **Evento com confirmados não some**: excluir um evento que já tem presenças só muda o status para `CANCELLED`, e quem confirmou continua vendo o evento em `/api/events/attending`.
 - **Ainda fora da API**: o chat (o frontend guarda as mensagens por id de pedido) e a moderação (banir e remover anúncio) continuam no frontend.

@@ -63,6 +63,10 @@ public class SecurityConfig {
                 // Vitrine pública: listagem, detalhes, animais e avaliações de um perfil, sem login
                 .requestMatchers(HttpMethod.GET, "/api/animals", "/api/animals/*", "/api/users/*/animals",
                         "/api/users/*/reviews").permitAll()
+                // Eventos: listagem e detalhe são públicos; "mine" e "attending" vêm antes
+                // porque "/api/events/*" também casaria com eles
+                .requestMatchers(HttpMethod.GET, "/api/events/mine", "/api/events/attending").authenticated()
+                .requestMatchers(HttpMethod.GET, "/api/events", "/api/events/*").permitAll()
                 // Painel do admin: só a conta ADMIN (a autoridade ROLE_ADMIN vem do
                 // CustomUserDetailsService). Sem token → 401; logado sem ser admin → 403
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
