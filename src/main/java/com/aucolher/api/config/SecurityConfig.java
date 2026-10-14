@@ -63,6 +63,8 @@ public class SecurityConfig {
                 // Vitrine pública: listagem, detalhes, animais e avaliações de um perfil, sem login
                 .requestMatchers(HttpMethod.GET, "/api/animals", "/api/animals/*", "/api/users/*/animals",
                         "/api/users/*/reviews").permitAll()
+                // Perfil público (página de ONG ou pessoa), sem login
+                .requestMatchers(HttpMethod.GET, "/api/users/*/public-profile").permitAll()
                 // Eventos: listagem e detalhe são públicos; "mine" e "attending" vêm antes
                 // porque "/api/events/*" também casaria com eles
                 .requestMatchers(HttpMethod.GET, "/api/events/mine", "/api/events/attending").authenticated()

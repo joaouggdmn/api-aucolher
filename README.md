@@ -23,7 +23,7 @@ src/main/java/com/aucolher/api/
 │   ├── UserService.java
 │   ├── UserRepository.java
 │   ├── entity/                             # User, TeamMember, VisitingHour, UserType, AuthProvider
-│   └── dto/                                # ProfileUpdateDTO, UserResponseDTO, TeamMemberDTO, VisitingHourDTO
+│   └── dto/                                # ProfileUpdateDTO, UserResponseDTO, PublicProfileDTO, TeamMemberDTO, VisitingHourDTO
 ├── animal/                                 # Anúncios de adoção
 │   ├── AnimalController.java
 │   ├── AnimalService.java                  # Regras: só o dono altera, ADOPTED é definitivo, inativo só o dono vê
@@ -320,6 +320,16 @@ Content-Type: application/json
 ```
 
 A conta editada é sempre a do token — não há id na rota. É uma substituição completa: campo opcional que não vier é apagado, e `team`/`visitingHours` substituem as listas inteiras (na ordem enviada). Usuário comum grava só `name`, `photoUrl`, `bio`, `cep`, `city` e `state`; o resto é ignorado. Para ONG o endereço continua obrigatório. E-mail, senha e CNPJ não mudam por aqui. Responde com o mesmo objeto `user` das rotas de autenticação — que também traz `team` e `visitingHours`, para o frontend não depender de nada guardado no navegador.
+
+### Perfil público
+```
+GET /api/users/{id}/public-profile
+```
+
+Público, sem login: é a página de perfil de uma ONG ou pessoa. Traz os mesmos campos do objeto `user` acima, menos `email` e `provider`.
+- ONG: perfil institucional completo, com endereço da sede, equipe e horários de visita.
+- Pessoa: só `city` e `state` do endereço; CEP, rua, número e os campos de ONG vêm nulos.
+- Conta inexistente, desativada ou admin responde 404.
 
 ### Login via Google (OAuth2)
 ```
