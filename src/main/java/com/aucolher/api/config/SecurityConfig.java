@@ -60,14 +60,23 @@ public class SecurityConfig {
                 .requestMatchers("/oauth2/**", "/login/oauth2/**").permitAll()
                 // "Meus animais" vem antes da regra pública: "/api/animals/*" também casaria com ele
                 .requestMatchers(HttpMethod.GET, "/api/animals/mine").authenticated()
-                // Vitrine pública: listagem, detalhes e animais de um perfil, sem login
-                .requestMatchers(HttpMethod.GET, "/api/animals", "/api/animals/*", "/api/users/*/animals").permitAll()
+                // Vitrine pública: listagem, detalhes, animais e avaliações de um perfil, sem login
+                .requestMatchers(HttpMethod.GET, "/api/animals", "/api/animals/*", "/api/users/*/animals",
+                        "/api/users/*/reviews").permitAll()
+                // Perfil público (página de ONG ou pessoa), sem login
+                .requestMatchers(HttpMethod.GET, "/api/users/*/public-profile").permitAll()
+                // Eventos: listagem e detalhe são públicos; "mine" e "attending" vêm antes
+                // porque "/api/events/*" também casaria com eles
+                .requestMatchers(HttpMethod.GET, "/api/events/mine", "/api/events/attending").authenticated()
+                .requestMatchers(HttpMethod.GET, "/api/events", "/api/events/*").permitAll()
                 // Painel do admin: só a conta ADMIN (a autoridade ROLE_ADMIN vem do
                 // CustomUserDetailsService). Sem token → 401; logado sem ser admin → 403
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
                 // AUmatch (quiz e deck): só pessoa física, que é quem adota.
                 // Sem token → 401; ONG ou admin → 403
                 .requestMatchers("/api/match/**").hasRole("PERSON")
+                // Pedido de adoção: pessoa ou ONG pedem; o admin não adota
+                .requestMatchers(HttpMethod.POST, "/api/adoption-requests").hasAnyRole("PERSON", "NGO")
                 .anyRequest().authenticated()
             )
             // Sem isto, uma requisição sem token para rota protegida seria

@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.springframework.context.ApplicationEventPublisher;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
@@ -34,6 +35,9 @@ class AnimalServiceTest {
 
     @Mock
     private UserRepository userRepository;
+
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     private AnimalService animalService;
@@ -106,6 +110,20 @@ class AnimalServiceTest {
 
         assertThat(animal.getStatus()).isEqualTo(AnimalStatus.INACTIVE);
         verify(animalRepository, never()).delete(any(Animal.class));
+    }
+
+    @Test
+    void leavingTheListingNotifiesTheAdoptionRequests() {
+        Animal animal = animal(AnimalStatus.AVAILABLE);
+        when(animalRepository.findById(10L)).thenReturn(Optional.of(animal));
+        when(animalRepository.saveAndFlush(animal)).thenReturn(animal);
+
+        animalService.deactivate(10L, OWNER_EMAIL);
+        verify(eventPublisher).publishEvent(new AnimalLeftListingEvent(10L));
+
+        // Voltar ao ar não cancela nada
+        animalService.changeStatus(10L, OWNER_EMAIL, AnimalStatus.AVAILABLE);
+        verifyNoMoreInteractions(eventPublisher);
     }
 
     @Test

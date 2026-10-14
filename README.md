@@ -1,6 +1,6 @@
 # AUcolher API — Plataforma de Adoção de Animais
 
-API REST em Spring Boot 3 / Java 17 do AUcolher: cadastro, login e autenticação (tradicional + OAuth2 Google) de dois perfis de usuário, **ONG** e **Usuário Comum**, edição do perfil ("Minha conta"), anúncios de animais para adoção, favoritos e o **AUmatch** (quiz de estilo de vida e deck ordenado por compatibilidade).
+API REST em Spring Boot 3 / Java 17 do AUcolher: cadastro, login e autenticação (tradicional + OAuth2 Google) de dois perfis de usuário, **ONG** e **Usuário Comum**, edição do perfil ("Minha conta"), anúncios de animais para adoção, favoritos, **eventos** das ONGs (com confirmação de presença), o **AUmatch** (quiz de estilo de vida e deck ordenado por compatibilidade) e os **pedidos de adoção**, com avaliações depois da adoção concluída.
 
 ## Stack
 
@@ -23,7 +23,7 @@ src/main/java/com/aucolher/api/
 │   ├── UserService.java
 │   ├── UserRepository.java
 │   ├── entity/                             # User, TeamMember, VisitingHour, UserType, AuthProvider
-│   └── dto/                                # ProfileUpdateDTO, UserResponseDTO, TeamMemberDTO, VisitingHourDTO
+│   └── dto/                                # ProfileUpdateDTO, UserResponseDTO, PublicProfileDTO, TeamMemberDTO, VisitingHourDTO
 ├── animal/                                 # Anúncios de adoção
 │   ├── AnimalController.java
 │   ├── AnimalService.java                  # Regras: só o dono altera, ADOPTED é definitivo, inativo só o dono vê
@@ -36,6 +36,12 @@ src/main/java/com/aucolher/api/
 │   ├── FavoriteService.java
 │   ├── FavoriteRepository.java
 │   └── entity/Favorite.java
+├── event/                                  # Eventos das ONGs e confirmação de presença
+│   ├── EventController.java
+│   ├── EventService.java                   # Regras: só a ONG dona altera, capacidade, evento passado não muda
+│   ├── EventRepository.java / EventAttendanceRepository.java
+│   ├── entity/                             # Event, EventAttendance + EventCategory, EventStatus
+│   └── dto/                                # EventRequestDTO, EventResponseDTO, AttendeeDTO, NgoSummaryDTO...
 ├── match/                                  # AUmatch: quiz da pessoa e deck por compatibilidade
 │   ├── MatchController.java
 │   ├── MatchService.java                   # Perfil do quiz e deck (filtra, pontua e ordena)
@@ -43,6 +49,16 @@ src/main/java/com/aucolher/api/
 │   ├── MatchProfileRepository.java
 │   ├── entity/                             # MatchProfile + enums das respostas (Housing, TimeAway...)
 │   └── dto/                                # MatchProfileRequestDTO, MatchProfileDTO, MatchCardDTO, MatchCriterionDTO
+├── adoption/                               # Pedidos de adoção e avaliações
+│   ├── AdoptionRequestController.java
+│   ├── AdoptionRequestService.java         # Cria, lista e muda o status (quem pode cada transição)
+│   ├── AdoptionReviewController.java       # Avaliações e o resumo público de um perfil
+│   ├── AdoptionReviewService.java
+│   ├── AdminAdoptionRequestController.java # Todos os pedidos, para o painel do admin
+│   ├── AdoptionRequestRepository.java
+│   ├── AdoptionReviewRepository.java
+│   ├── entity/                             # AdoptionRequest, AdoptionReview + enums (AdoptionStatus, CancelReason, ReviewRole)
+│   └── dto/                                # AdoptionRequestDTO, AdopterDTO, ReviewDTO, UserReviewsDTO...
 ├── shared/                                 # Comum a todas as funcionalidades
 │   ├── dto/PageDTO.java                    # Formato padrão das respostas paginadas
 │   ├── exception/                          # Exceções (400, 401, 403, 404), @RestControllerAdvice e ErrorResponseDTO
@@ -67,7 +83,7 @@ src/test/java/...                           # Testes (JUnit 5 + Mockito + MockMv
 psql -U postgres -h localhost -f sql/schema.sql
 ```
 
-O script cria o banco `aucolher_db` (se ainda não existir) e as tabelas `users`, `ngo_team`, `ngo_visiting_hours`, `animals`, `animal_photos`, `favorites` e `match_profiles`. Todas usam `IF NOT EXISTS`, então rodar o script de novo não apaga nada. É uma cópia de `docs/script_banco_aucolher.sql` do frontend — mantenha os dois iguais. Rode o script antes de subir a API: o Hibernate (`ddl-auto=validate`) não cria o banco nem as tabelas, só confere se elas batem com as entidades.
+O script cria o banco `aucolher_db` (se ainda não existir) e as tabelas `users`, `ngo_team`, `ngo_visiting_hours`, `animals`, `animal_photos`, `favorites`, `match_profiles`, `adoption_requests`, `adoption_reviews`, `events` e `event_attendances`. Todas usam `IF NOT EXISTS`, então rodar o script de novo não apaga nada. É uma cópia de `docs/script_banco_aucolher.sql` do frontend — mantenha os dois iguais. Rode o script antes de subir a API: o Hibernate (`ddl-auto=validate`) não cria o banco nem as tabelas, só confere se elas batem com as entidades.
 
 #### Banco criado antes da padronização em inglês
 
@@ -99,6 +115,26 @@ psql -U postgres -h localhost -d aucolher_db -f sql/migrations/004_match_profile
 ```
 
 Ela só cria a tabela nova (nenhum dado existente muda) e pode ser repetida. Banco novo, criado pelo `schema.sql` atual, não precisa dela.
+
+#### Pedidos de adoção e avaliações (migração 005)
+
+A 005 cria `adoption_requests` e `adoption_reviews`, que até aqui existiam só no navegador. Sem elas a API não sobe (`Schema-validation: missing table [adoption_requests]`):
+
+```bash
+psql -U postgres -h localhost -d aucolher_db -f sql/migrations/005_adoption_requests.sql
+```
+
+Também só cria tabelas novas e pode ser repetida.
+
+#### Eventos (migração 006)
+
+A 006 cria `events` e `event_attendances`, que até aqui existiam só no navegador (mock do frontend). Sem elas a API não sobe (`Schema-validation: missing table [events]`):
+
+```bash
+psql -U postgres -h localhost -d aucolher_db -f sql/migrations/006_events.sql
+```
+
+Só cria tabelas novas e pode ser repetida.
 
 Depois de trazer as mudanças do Git, faça **Build → Rebuild Project** no IntelliJ (ou `mvn clean`): classes antigas compiladas (`Usuario`, `Animal` com campos em português) ficam na pasta `target/` e impedem a API de subir.
 
@@ -285,6 +321,16 @@ Content-Type: application/json
 
 A conta editada é sempre a do token — não há id na rota. É uma substituição completa: campo opcional que não vier é apagado, e `team`/`visitingHours` substituem as listas inteiras (na ordem enviada). Usuário comum grava só `name`, `photoUrl`, `bio`, `cep`, `city` e `state`; o resto é ignorado. Para ONG o endereço continua obrigatório. E-mail, senha e CNPJ não mudam por aqui. Responde com o mesmo objeto `user` das rotas de autenticação — que também traz `team` e `visitingHours`, para o frontend não depender de nada guardado no navegador.
 
+### Perfil público
+```
+GET /api/users/{id}/public-profile
+```
+
+Público, sem login: é a página de perfil de uma ONG ou pessoa. Traz os mesmos campos do objeto `user` acima, menos `email` e `provider`.
+- ONG: perfil institucional completo, com endereço da sede, equipe e horários de visita.
+- Pessoa: só `city` e `state` do endereço; CEP, rua, número e os campos de ONG vêm nulos.
+- Conta inexistente, desativada ou admin responde 404.
+
 ### Login via Google (OAuth2)
 ```
 GET /oauth2/authorization/google
@@ -382,6 +428,106 @@ Todas exigem login.
 | `PUT /api/favorites/{animalId}` | Favorita. Repetir não duplica — responde 204 |
 | `DELETE /api/favorites/{animalId}` | Desfavorita — responde 204 |
 
+### Eventos
+
+| Método e rota | Quem acessa | O que faz |
+|---|---|---|
+| `GET /api/events?ngoId=` | Público | Eventos ativos de hoje em diante; `ngoId` filtra por ONG |
+| `GET /api/events/{id}` | Público | Detalhe; evento passado abre normalmente |
+| `GET /api/events/mine` | ONG | Eventos da ONG logada, inclusive os passados |
+| `GET /api/events/attending` | Logado | Eventos em que a pessoa confirmou presença (passados e cancelados inclusos) |
+| `POST /api/events` | ONG | Cria o evento — 201 |
+| `PUT /api/events/{id}` | ONG dona | Substitui todos os campos |
+| `DELETE /api/events/{id}` | ONG dona | Exclui; com confirmados vira `CANCELLED` — 204 |
+| `GET /api/events/{id}/attendees` | ONG dona | Lista de confirmados |
+| `POST /api/events/{id}/attendance` | Logado | Confirma presença (idempotente) e devolve o evento |
+| `DELETE /api/events/{id}/attendance` | Logado | Cancela a presença (idempotente) |
+
+Categorias: `ADOPTION_FAIR`, `HEALTH`, `BAZAAR`, `WORKSHOP`. A data não pode estar no passado, o término precisa ser depois do início, a capacidade não pode ficar abaixo dos confirmados, e a ONG não confirma presença no próprio evento.
+
+### Pedidos de adoção
+
+Todas exigem login. Enviar um pedido é para **pessoa ou ONG** (o admin recebe 403). O dono do pedido é sempre o dono do animal.
+
+| Método e rota | Quem | O que faz |
+|---|---|---|
+| `POST /api/adoption-requests` | pessoa ou ONG | `{ "animalId": 12 }` — cria o pedido (`PENDING`) e responde 201 |
+| `GET /api/adoption-requests/sent` | quem pediu | Os pedidos que a conta enviou ("Meus interesses") |
+| `GET /api/adoption-requests/received` | dono | Os pedidos dos animais da conta, em qualquer status |
+| `GET /api/adoption-requests/{id}` | as duas partes | Um pedido |
+| `PATCH /api/adoption-requests/{id}/status` | depende da transição | `{ "status": "ACCEPTED" }` — ver a tabela abaixo |
+
+Regras do envio:
+- o animal precisa estar `AVAILABLE`; o próprio dono não pede (403);
+- um pedido "vivo" por pessoa e animal: com outro pedido não cancelado para o mesmo animal, responde 400 ("Você já enviou um pedido..." ou "O dono já recusou o seu pedido..."). **Recusado é definitivo; só um pedido cancelado libera um novo.** O banco garante isso com um índice único parcial.
+
+Transições (papel errado responde 403; status de partida errado, 400; repetir o status atual não muda nada):
+
+| De → Para | Quem | Efeito |
+|---|---|---|
+| `PENDING` → `ACCEPTED` | dono | Libera o chat |
+| `PENDING` → `REJECTED` | dono | Definitivo para aquele animal |
+| `ACCEPTED` → `AWAITING_DELIVERY` | dono | O dono confirmou a entrega; trava o chat |
+| `AWAITING_DELIVERY` → `CONCLUDED` | adotante | Numa transação só: o animal vira `ADOPTED` e os outros pedidos ativos dele são cancelados (`ANIMAL_ADOPTED`) |
+| `PENDING` / `ACCEPTED` / `AWAITING_DELIVERY` → `CANCELLED` | adotante | Desistiu (`ADOPTER_WITHDREW`) |
+| `ACCEPTED` / `AWAITING_DELIVERY` → `CANCELLED` | dono | Desistiu (`OWNER_WITHDREW`); pendente o dono recusa |
+
+O dono pode aceitar vários pedidos do mesmo animal; vale o primeiro que concluir. Quando ele marca o animal como adotado por fora, tira do ar ou exclui o anúncio, os pedidos ativos são cancelados com `ANIMAL_UNAVAILABLE`. Todo cancelamento guarda `cancelReason`, `cancelledFromStatus` e `closedAt`.
+
+```json
+{
+  "id": 8,
+  "status": "PENDING",
+  "cancelReason": null,
+  "cancelledFromStatus": null,
+  "createdAt": "2026-10-13T07:00:19.840718",
+  "updatedAt": "2026-10-13T07:00:19.840718",
+  "concludedAt": null,
+  "closedAt": null,
+  "animal": { "id": 4, "name": "Mel", "owner": { "id": 2, "name": "ONG Dona", "...": "..." }, "...": "..." },
+  "adopter": { "id": 4, "name": "Maria", "photoUrl": null, "userType": "PERSON", "city": "Criciúma", "state": "SC",
+               "matchProfile": { "housing": "APARTMENT", "...": "...", "complete": true } },
+  "matchScore": 85,
+  "reviews": { "adopter": null, "owner": null }
+}
+```
+
+- `animal` é o card da listagem (`AnimalSummaryDTO`), com o dono em `animal.owner`.
+- `adopter.matchProfile` traz as respostas do quiz do AUmatch (nulo para ONG ou para quem não respondeu); `matchScore` é a compatibilidade atual entre elas e o animal, calculada pelo `MatchScoreCalculator`.
+- `reviews` traz as avaliações das duas partes (ver abaixo).
+
+### Avaliações
+
+Depois que o pedido é concluído, cada parte pode avaliar a outra uma vez: o adotante avalia o dono (`reviews.adopter`) e o dono avalia o adotante (`reviews.owner`). O autor edita ou apaga a própria avaliação quando quiser.
+
+| Método e rota | Login | O que faz |
+|---|---|---|
+| `PUT /api/adoption-requests/{id}/review` | parte do pedido | `{ "rating": 5, "comment": "..." }` — cria ou edita a minha avaliação e responde com o pedido. Só em `CONCLUDED` |
+| `DELETE /api/adoption-requests/{id}/review` | parte do pedido | Apaga a minha avaliação — responde 204 |
+| `GET /api/users/{id}/reviews` | não | Resumo público de um perfil |
+
+`rating` vai de 1 a 5 e `comment` é opcional, com até 500 caracteres. `updatedAt` só vem preenchida depois de uma edição.
+
+```json
+{
+  "average": 4.5,
+  "count": 2,
+  "distribution": { "5": 1, "4": 1, "3": 0, "2": 0, "1": 0 },
+  "adoptionsCount": 3,
+  "reviews": [
+    { "id": 1, "requestId": 8, "rating": 5, "comment": "Ótima ONG!", "animalName": "Thor",
+      "author": { "id": 4, "name": "Maria", "photoUrl": null, "isOng": false },
+      "createdAt": "2026-10-13T07:00:20", "updatedAt": null }
+  ]
+}
+```
+
+`adoptionsCount` conta as adoções concluídas em que a conta participou, como dona do animal ou como adotante.
+
+### Admin: pedidos
+
+`GET /api/admin/adoption-requests` (só a conta ADMIN) lista todos os pedidos, do mais recente para o mais antigo, numa versão enxuta: status, motivo, datas, o animal (`id`, `name`, `species`, `status`, `coverPhoto`), o dono e o adotante (`id`, `name`, `userType`). Alimenta o funil de adoções, as adoções por mês e o ranking de ONGs do painel.
+
 ### AUmatch
 
 Só pessoa física (`PERSON`), que é quem adota: sem token responde 401, e ONG ou admin recebem 403.
@@ -435,7 +581,7 @@ A resposta traz também `complete`: `true` quando as 7 perguntas têm resposta.
 ]
 ```
 
-- Entram os animais `AVAILABLE` de contas ativas, menos os da própria pessoa.
+- Entram os animais `AVAILABLE` de contas ativas, menos os da própria pessoa e os que ela já pediu (qualquer pedido que não esteja cancelado).
 - `speciesPreference` `DOG` ou `CAT` deixa só essa espécie; `BOTH` ou sem resposta mostra todas.
 - No empate de score, o anúncio mais recente vem primeiro.
 - `animal` é o mesmo card da listagem de animais.
@@ -470,9 +616,17 @@ A resposta traz também `complete`: `true` quando as 7 perguntas têm resposta.
 - **`ddl-auto=validate`**: o schema vem do `sql/schema.sql`; o Hibernate só confere se o banco bate com as entidades, em vez de alterar tabelas sozinho. Mudanças em bancos já existentes vão em `sql/migrations/`, numeradas e transacionais.
 - **Constraints de banco** (`CHECK`) reforçam no schema.sql as mesmas regras já validadas na aplicação (ONG exige CNPJ; contas LOCAL exigem senha; valores dos enums dos animais) como camada extra de integridade.
 - **Localização do animal = a do dono**: `animals` não tem cidade/UF; a listagem filtra pelo endereço do perfil de quem anunciou. **Sem geolocalização por decisão do projeto**: nem `users` nem `animals` guardam latitude/longitude, e não há filtro nem ordenação por distância ("perto de mim"). A busca por local é só por cidade/UF.
-- **Exclusão lógica de animais**: `DELETE` só muda o status para `INACTIVE`, preservando o histórico (favoritos e, no futuro, pedidos de adoção).
+- **Exclusão lógica de animais**: `DELETE` só muda o status para `INACTIVE`, preservando o histórico (favoritos e pedidos de adoção) — e os pedidos ativos do animal são cancelados.
 - **Cards leves**: a listagem busca só a foto de capa (numa consulta única) e carrega o dono junto, então uma página custa duas consultas SQL, com payload pequeno mesmo com fotos em data URL.
 - **Favoritar é idempotente no banco**: `INSERT ... ON CONFLICT DO NOTHING` garante um favorito por par usuário/animal mesmo com cliques simultâneos.
 - **Score do AUmatch no backend**: o algoritmo roda na API (`MatchScoreCalculator`, coberto por testes) e o deck já chega ordenado. Como o score depende de cada animal, não dá para ordenar no banco: o deck carrega os candidatos e ordena em memória, sem paginação, o que basta para o volume do projeto.
 - **Perfil AUmatch em tabela própria** (`match_profiles`, 1:1 com `users`): o quiz é só de pessoa física e pode mudar sem mexer no cadastro.
-- **Swipes não são gravados**: o "passar" vale só na sessão do navegador, e o "curtir" ainda vira um pedido de adoção no frontend. Quando os pedidos de adoção vierem para a API, o deck passa a esconder os animais já pedidos.
+- **Swipes não são gravados**: o "passar" vale só na sessão do navegador; o "curtir" é um pedido de adoção (`POST /api/adoption-requests`), e o deck esconde os animais já pedidos.
+- **Status do pedido validado no servidor**: cada transição tem papel e status de partida certos (`AdoptionRequestService.changeStatus`). O frontend só esconde os botões; quem decide é a API.
+- **"Recusado é definitivo" no banco**: o índice único parcial `uq_adoption_requests_open (adopter_id, animal_id) WHERE status <> 'CANCELLED'` impede um segundo pedido vivo mesmo com dois cliques ao mesmo tempo.
+- **Concluir trava o animal**: a conclusão lê o animal com `SELECT ... FOR UPDATE`. Se dois adotantes confirmarem a chegada ao mesmo tempo, o segundo encontra o animal já adotado e o próprio pedido já cancelado.
+- **Pedidos sem dependência circular**: tirar o animal do ar publica um `AnimalLeftListingEvent`, e o módulo de pedidos cancela os ativos na mesma transação — o `AnimalService` não conhece os pedidos.
+- **Sem cópia congelada**: o pedido lê o adotante, o animal e as respostas do quiz ao vivo, então o dono vê sempre a compatibilidade atual.
+- **Vagas de evento sem corrida**: confirmar presença, editar e excluir leem o evento com `SELECT ... FOR UPDATE`, então dois cliques ao mesmo tempo não passam da capacidade.
+- **Evento com confirmados não some**: excluir um evento que já tem presenças só muda o status para `CANCELLED`, e quem confirmou continua vendo o evento em `/api/events/attending`.
+- **Ainda fora da API**: o chat (o frontend guarda as mensagens por id de pedido) e a moderação (banir e remover anúncio) continuam no frontend.
