@@ -1,5 +1,7 @@
 package com.aucolher.api.match;
 
+import com.aucolher.api.adoption.AdoptionRequestRepository;
+import com.aucolher.api.adoption.entity.AdoptionStatus;
 import com.aucolher.api.animal.AnimalRepository;
 import com.aucolher.api.animal.AnimalService;
 import com.aucolher.api.animal.dto.AnimalSummaryDTO;
@@ -46,6 +48,9 @@ class MatchServiceTest {
 
     @Mock
     private UserRepository userRepository;
+
+    @Mock
+    private AdoptionRequestRepository adoptionRequestRepository;
 
     @InjectMocks
     private MatchService matchService;
@@ -149,6 +154,18 @@ class MatchServiceTest {
 
         assertThat(deck).extracting(card -> card.animal().id()).containsExactly(1L, 3L, 2L);
         assertThat(deck).extracting(MatchCardDTO::matchScore).containsOnly(30);
+    }
+
+    @Test
+    void deckHidesAnimalsThePersonAlreadyRequested() {
+        givenUser();
+        when(matchProfileRepository.findById(USER_ID)).thenReturn(Optional.empty());
+        when(adoptionRequestRepository.findRequestedAnimalIds(USER_ID, AdoptionStatus.CANCELLED)).thenReturn(List.of(2L));
+        givenCandidates(
+                animal(1L, Species.DOG, AnimalSize.MEDIUM, 1),
+                animal(2L, Species.DOG, AnimalSize.MEDIUM, 2));
+
+        assertThat(matchService.deck(EMAIL)).extracting(card -> card.animal().id()).containsExactly(1L);
     }
 
     @Test

@@ -14,7 +14,8 @@
 -- sql/migrations/ — eles renomeiam tudo sem perder os dados.
 --
 -- Espelha as entidades do Spring Boot (User, TeamMember,
--- VisitingHour, Animal, Favorite, MatchProfile) e a seção 6 de
+-- VisitingHour, Animal, Favorite, MatchProfile, AdoptionRequest,
+-- AdoptionReview, Event, EventAttendance) e a seção 6 de
 -- docs/regras-de-negocio.md.
 -- Cópia mantida no backend em sql/schema.sql.
 -- ============================================================
@@ -261,6 +262,116 @@ COMMENT ON COLUMN match_profiles.user_id          IS 'A pessoa (PERSON) dona das
 COMMENT ON COLUMN match_profiles.time_away        IS 'Tempo fora de casa: SHORT (até 4h), REGULAR (4h a 8h) ou LONG (mais de 8h)';
 COMMENT ON COLUMN match_profiles.has_children     IS 'Mora com crianças — as três colunas has_* nulas juntas = pergunta sem resposta';
 COMMENT ON COLUMN match_profiles.preferred_size   IS 'Porte preferido; se estiver vazio, quem mora em APARTMENT conta como SMALL';
+
+-- ------------------------------------------------------------
+-- adoption_requests — pedidos de adoção (curtir no AUmatch ou
+-- "Enviar pedido" na página do animal). O dono não é coluna: é o
+-- dono do animal (animals.owner_id).
+-- Fluxo: PENDING → ACCEPTED → AWAITING_DELIVERY → CONCLUDED, ou
+-- REJECTED pelo dono, ou CANCELLED (por uma das partes ou pelo
+-- sistema, com o motivo em cancel_reason).
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS adoption_requests (
+    id                     BIGSERIAL    PRIMARY KEY,
+    animal_id              BIGINT       NOT NULL REFERENCES animals (id) ON DELETE CASCADE,
+    adopter_id             BIGINT       NOT NULL REFERENCES users (id)   ON DELETE CASCADE,
+    status                 VARCHAR(20)  NOT NULL DEFAULT 'PENDING',
+    cancel_reason          VARCHAR(30),
+    cancelled_from_status  VARCHAR(20),
+    created_at             TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at             TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    concluded_at           TIMESTAMP,
+    closed_at              TIMESTAMP,
+
+    CONSTRAINT chk_adoption_requests_status         CHECK (status IN ('PENDING', 'ACCEPTED', 'AWAITING_DELIVERY',
+                                                                      'CONCLUDED', 'REJECTED', 'CANCELLED')),
+    CONSTRAINT chk_adoption_requests_cancel_reason  CHECK (cancel_reason IN ('ADOPTER_WITHDREW', 'OWNER_WITHDREW',
+                                                                             'ANIMAL_ADOPTED', 'ANIMAL_UNAVAILABLE')),
+    CONSTRAINT chk_adoption_requests_cancelled      CHECK ((status = 'CANCELLED') = (cancel_reason IS NOT NULL)),
+    CONSTRAINT chk_adoption_requests_cancelled_from CHECK (cancelled_from_status IS NULL
+                                                        OR cancelled_from_status IN ('PENDING', 'ACCEPTED', 'AWAITING_DELIVERY')),
+    CONSTRAINT chk_adoption_requests_concluded      CHECK ((status = 'CONCLUDED') = (concluded_at IS NOT NULL))
+);
+
+-- Um pedido "vivo" por pessoa e animal: recusado é definitivo, e só um
+-- pedido cancelado libera um novo
+CREATE UNIQUE INDEX IF NOT EXISTS uq_adoption_requests_open ON adoption_requests (adopter_id, animal_id)
+    WHERE status <> 'CANCELLED';
+CREATE INDEX IF NOT EXISTS idx_adoption_requests_animal  ON adoption_requests (animal_id, status);
+CREATE INDEX IF NOT EXISTS idx_adoption_requests_adopter ON adoption_requests (adopter_id, created_at DESC);
+
+COMMENT ON TABLE  adoption_requests                       IS 'Pedidos de adoção: quem quer adotar (adopter_id) pede um animal ao dono dele';
+COMMENT ON COLUMN adoption_requests.status                IS 'PENDING, ACCEPTED, AWAITING_DELIVERY, CONCLUDED, REJECTED ou CANCELLED';
+COMMENT ON COLUMN adoption_requests.cancel_reason         IS 'Só em CANCELLED: ADOPTER_WITHDREW, OWNER_WITHDREW, ANIMAL_ADOPTED (outro pedido concluiu) ou ANIMAL_UNAVAILABLE (o dono tirou o animal do ar)';
+COMMENT ON COLUMN adoption_requests.cancelled_from_status IS 'Status em que o pedido estava quando foi cancelado';
+COMMENT ON COLUMN adoption_requests.closed_at             IS 'Quando o pedido foi recusado ou cancelado';
+
+-- ------------------------------------------------------------
+-- adoption_reviews — avaliações depois de uma adoção concluída.
+-- Uma por lado: ADOPTER avalia o dono, OWNER avalia o adotante.
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS adoption_reviews (
+    id           BIGSERIAL     PRIMARY KEY,
+    request_id   BIGINT        NOT NULL REFERENCES adoption_requests (id) ON DELETE CASCADE,
+    author_role  VARCHAR(10)   NOT NULL,
+    rating       INTEGER       NOT NULL,
+    comment      VARCHAR(500),
+    created_at   TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at   TIMESTAMP,
+
+    CONSTRAINT chk_adoption_reviews_author_role CHECK (author_role IN ('ADOPTER', 'OWNER')),
+    CONSTRAINT chk_adoption_reviews_rating      CHECK (rating BETWEEN 1 AND 5),
+    CONSTRAINT uq_adoption_reviews_request_role UNIQUE (request_id, author_role)
+);
+
+COMMENT ON TABLE  adoption_reviews             IS 'Avaliações de adoções concluídas — uma por lado de cada pedido';
+COMMENT ON COLUMN adoption_reviews.author_role IS 'ADOPTER: o adotante avalia o dono; OWNER: o dono avalia o adotante';
+COMMENT ON COLUMN adoption_reviews.rating      IS 'Estrelas, de 1 a 5';
+COMMENT ON COLUMN adoption_reviews.updated_at  IS 'Preenchida só quando o autor edita a avaliação';
+
+-- ------------------------------------------------------------
+-- events — eventos criados por ONGs. Excluir um evento com
+-- confirmados só muda o status para CANCELLED.
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS events (
+    id           BIGSERIAL     PRIMARY KEY,
+    ngo_id       BIGINT        NOT NULL REFERENCES users(id),
+    title        VARCHAR(120)  NOT NULL,
+    description  TEXT          NOT NULL,
+    category     VARCHAR(20)   NOT NULL CHECK (category IN ('ADOPTION_FAIR', 'HEALTH', 'BAZAAR', 'WORKSHOP')),
+    date         DATE          NOT NULL,
+    start_time   TIME          NOT NULL,
+    end_time     TIME,
+    venue_name   VARCHAR(120)  NOT NULL,
+    cep          VARCHAR(8),
+    street       VARCHAR(150)  NOT NULL,
+    number       VARCHAR(20),
+    complement   VARCHAR(100),
+    district     VARCHAR(100),
+    city         VARCHAR(100)  NOT NULL,
+    state        VARCHAR(2)    NOT NULL,
+    capacity     INTEGER       CHECK (capacity IS NULL OR capacity > 0),
+    cover_url    TEXT,
+    status       VARCHAR(20)   NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'CANCELLED')),
+    created_at   TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CHECK (end_time IS NULL OR end_time > start_time)
+);
+
+CREATE INDEX IF NOT EXISTS idx_events_ngo ON events (ngo_id);
+CREATE INDEX IF NOT EXISTS idx_events_status_date ON events (status, date);
+
+-- ------------------------------------------------------------
+-- event_attendances — confirmações de presença (uma por pessoa e
+-- evento)
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS event_attendances (
+    event_id      BIGINT     NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    user_id       BIGINT     NOT NULL REFERENCES users(id),
+    confirmed_at  TIMESTAMP  NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (event_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_event_attendances_user ON event_attendances (user_id);
 
 -- ============================================================
 -- Opcional: trazer as contas de teste do banco antigo (adocao_db)
