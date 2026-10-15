@@ -76,6 +76,10 @@ public class Event {
     @Column(nullable = false, length = 20)
     private EventStatus status = EventStatus.ACTIVE;
 
+    /** Cancelado pelo admin (sempre CANCELLED) — separado do que a própria ONG cancelou. */
+    @Column(name = "removed_by_moderation", nullable = false)
+    private boolean removedByModeration;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

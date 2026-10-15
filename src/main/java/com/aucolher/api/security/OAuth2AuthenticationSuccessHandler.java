@@ -1,6 +1,7 @@
 package com.aucolher.api.security;
 
 import com.aucolher.api.auth.dto.AuthResponseDTO;
+import com.aucolher.api.user.UserRepository;
 import com.aucolher.api.user.UserService;
 import com.aucolher.api.user.dto.UserResponseDTO;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -25,6 +26,7 @@ import java.io.IOException;
 public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccessHandler {
 
     private final UserService userService;
+    private final UserRepository userRepository;
     private final JwtService jwtService;
     // O ObjectMapper do Spring já vem com o módulo de datas do Java 8 — um
     // new ObjectMapper() puro falha ao serializar o dataCriacao (LocalDateTime)
@@ -36,6 +38,13 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
 
         OAuth2User oAuth2User = (OAuth2User) authentication.getPrincipal();
         String email = oAuth2User.getAttribute("email");
+
+        // Conta banida pela moderação não recebe token, como no login tradicional
+        boolean suspended = userRepository.findByEmail(email).map(found -> !Boolean.TRUE.equals(found.getActive())).orElse(false);
+        if (suspended) {
+            SuspendedAccount.write(response, objectMapper);
+            return;
+        }
 
         // O CustomOAuth2UserService já criou a conta no primeiro acesso
         UserResponseDTO user = userService.getProfile(email);

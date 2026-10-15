@@ -9,5 +9,9 @@ public enum CancelReason {
     /** Outro pedido do mesmo animal foi concluído. */
     ANIMAL_ADOPTED,
     /** O dono tirou o animal do ar, marcou como adotado por fora ou excluiu o anúncio. */
-    ANIMAL_UNAVAILABLE
+    ANIMAL_UNAVAILABLE,
+    /** Uma das partes foi banida pela moderação. */
+    ACCOUNT_BANNED,
+    /** O anúncio foi removido pela moderação. */
+    LISTING_REMOVED
 }

@@ -44,6 +44,9 @@ final class AnimalSpecifications {
             // Cidade e UF são as do dono (o animal está onde o dono está)
             Join<Animal, User> owner = root.join("owner");
 
+            // Conta banida pela moderação: os anúncios dela saem da vitrine
+            conditions.add(cb.isTrue(owner.get("active")));
+
             if (filter.city() != null) {
                 conditions.add(cb.equal(cb.lower(owner.get("city")), filter.city().toLowerCase(Locale.ROOT)));
             }
