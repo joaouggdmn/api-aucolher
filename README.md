@@ -371,6 +371,7 @@ Público, sem login: é a página de perfil de uma ONG ou pessoa. Traz os mesmos
 - ONG: perfil institucional completo, com endereço da sede, equipe, horários de visita e o `email` de login como contato público.
 - Pessoa: só `city` e `state` do endereço; `email`, CEP, rua, número e os campos de ONG vêm nulos.
 - Conta inexistente, desativada ou admin responde 404.
+- **Exceção do admin:** a conta ADMIN ainda vê o perfil de uma conta banida (com `active: false`) e os animais disponíveis dela (`GET /api/users/{id}/animals`), para conferir e reativar a conta pelo site. Para todos os outros, o perfil banido continua 404.
 
 ### Login via Google (OAuth2)
 ```

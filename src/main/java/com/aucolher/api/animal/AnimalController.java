@@ -48,8 +48,9 @@ public class AnimalController {
 
     /** Público: animais disponíveis de um perfil (página de perfil público). */
     @GetMapping("/users/{userId}/animals")
-    public ResponseEntity<List<AnimalSummaryDTO>> listByOwner(@PathVariable Long userId) {
-        return ResponseEntity.ok(animalService.listByOwner(userId));
+    public ResponseEntity<List<AnimalSummaryDTO>> listByOwner(@PathVariable Long userId,
+                                                              @AuthenticationPrincipal UserDetails loggedUser) {
+        return ResponseEntity.ok(animalService.listByOwner(userId, emailOf(loggedUser)));
     }
 
     @PostMapping("/animals")

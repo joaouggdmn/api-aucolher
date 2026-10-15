@@ -19,8 +19,9 @@ public class UserController {
 
     /** Público: página de perfil de uma ONG ou pessoa, sem e-mail de login. */
     @GetMapping("/{id}/public-profile")
-    public ResponseEntity<PublicProfileDTO> getPublicProfile(@PathVariable Long id) {
-        return ResponseEntity.ok(userService.getPublicProfile(id));
+    public ResponseEntity<PublicProfileDTO> getPublicProfile(@PathVariable Long id,
+                                                             @AuthenticationPrincipal UserDetails viewer) {
+        return ResponseEntity.ok(userService.getPublicProfile(id, viewer == null ? null : viewer.getUsername()));
     }
 
     /**
