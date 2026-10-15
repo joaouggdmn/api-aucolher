@@ -351,13 +351,15 @@ public class AdoptionRequestService {
     }
 
     /**
-     * O dono tirou o animal da vitrine por conta própria: os pedidos ativos
-     * dele são cancelados (ANIMAL_UNAVAILABLE). Roda na mesma transação.
+     * O animal saiu da vitrine: os pedidos ativos dele são cancelados —
+     * ANIMAL_UNAVAILABLE quando foi o dono, LISTING_REMOVED quando foi a
+     * moderação. Roda na mesma transação.
      */
     @EventListener
     public void onAnimalLeftListing(AnimalLeftListingEvent event) {
+        CancelReason reason = event.byModeration() ? CancelReason.LISTING_REMOVED : CancelReason.ANIMAL_UNAVAILABLE;
         requestRepository.findByAnimalIdAndStatusIn(event.animalId(), AdoptionStatus.ACTIVE)
-                .forEach(request -> request.cancel(CancelReason.ANIMAL_UNAVAILABLE));
+                .forEach(request -> request.cancel(reason));
     }
 
     private static void requireRole(boolean hasRole, String message) {

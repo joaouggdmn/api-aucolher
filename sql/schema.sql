@@ -15,7 +15,7 @@
 --
 -- Espelha as entidades do Spring Boot (User, TeamMember,
 -- VisitingHour, Animal, Favorite, MatchProfile, AdoptionRequest,
--- AdoptionReview, Event, EventAttendance) e a seção 6 de
+-- AdoptionReview, Event, EventAttendance, Report) e a seção 6 de
 -- docs/regras-de-negocio.md.
 -- Cópia mantida no backend em sql/schema.sql.
 -- ============================================================
@@ -83,6 +83,7 @@ CREATE INDEX IF NOT EXISTS idx_users_user_type ON users (user_type);
 
 COMMENT ON TABLE  users                     IS 'Contas da plataforma: ONGs/abrigos, usuários comuns e administradores';
 COMMENT ON COLUMN users.password            IS 'Hash BCrypt — nulo para contas criadas via OAuth2 (Google)';
+COMMENT ON COLUMN users.active              IS 'false = conta suspensa pela moderação: não entra e o conteúdo some das rotas públicas';
 COMMENT ON COLUMN users.photo_url           IS 'URL do avatar ou data URL da imagem comprimida no frontend (enquanto não há upload próprio)';
 COMMENT ON COLUMN users.bio                 IS 'Bio do usuário comum (cuidadores autônomos) ou descrição da ONG';
 COMMENT ON COLUMN users.cnpj                IS 'Apenas os 14 dígitos — obrigatório quando user_type = NGO';
@@ -175,7 +176,7 @@ CREATE TABLE IF NOT EXISTS animals (
                                            AND independence_level IN ('LOW', 'MODERATE', 'HIGH')
                                            AND vocalization       IN ('LOW', 'MODERATE', 'HIGH')),
     CONSTRAINT chk_animals_temperament  CHECK (temperament IN ('CALM', 'PLAYFUL', 'AFFECTIONATE', 'PROTECTIVE', 'INDEPENDENT')),
-    CONSTRAINT chk_animals_status       CHECK (status IN ('AVAILABLE', 'ADOPTED', 'INACTIVE'))
+    CONSTRAINT chk_animals_status       CHECK (status IN ('AVAILABLE', 'ADOPTED', 'INACTIVE', 'REMOVED'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_animals_status_created ON animals (status, created_at DESC);
@@ -186,7 +187,7 @@ COMMENT ON COLUMN animals.owner_id   IS 'Quem anunciou — a cidade/UF exibidas 
 COMMENT ON COLUMN animals.age_value  IS 'Idade informada no cadastro, na unidade de age_unit (0-11 meses ou 1-30 anos)';
 COMMENT ON COLUMN animals.age_group  IS 'Calculada pela API ao salvar: < 12 meses PUPPY, < 8 anos ADULT, senão SENIOR';
 COMMENT ON COLUMN animals.summary    IS 'Frase curta exibida no card da listagem';
-COMMENT ON COLUMN animals.status     IS 'AVAILABLE, ADOPTED ou INACTIVE (retirado do ar pelo dono — exclusão lógica)';
+COMMENT ON COLUMN animals.status     IS 'AVAILABLE, ADOPTED, INACTIVE (retirado do ar pelo dono — exclusão lógica) ou REMOVED (removido pela moderação)';
 
 -- ------------------------------------------------------------
 -- animal_photos — até 4 fotos por animal, na ordem de exibição
@@ -294,7 +295,9 @@ CREATE TABLE IF NOT EXISTS adoption_requests (
                                                                       'CONCLUDED', 'REJECTED', 'CANCELLED',
                                                                       'RETURNED', 'REHOMED')),
     CONSTRAINT chk_adoption_requests_cancel_reason  CHECK (cancel_reason IN ('ADOPTER_WITHDREW', 'OWNER_WITHDREW',
-                                                                             'ANIMAL_ADOPTED', 'ANIMAL_UNAVAILABLE')),
+                                                                             'ANIMAL_ADOPTED', 'ANIMAL_UNAVAILABLE',
+                                                                             'ACCOUNT_DELETED', 'ACCOUNT_BANNED',
+                                                                             'LISTING_REMOVED')),
     CONSTRAINT chk_adoption_requests_cancelled      CHECK ((status = 'CANCELLED') = (cancel_reason IS NOT NULL)),
     CONSTRAINT chk_adoption_requests_cancelled_from CHECK (cancelled_from_status IS NULL
                                                         OR cancelled_from_status IN ('PENDING', 'ACCEPTED', 'AWAITING_DELIVERY')),
@@ -322,7 +325,7 @@ CREATE INDEX IF NOT EXISTS idx_adoption_requests_outcome ON adoption_requests (s
 
 COMMENT ON TABLE  adoption_requests                       IS 'Pedidos de adoção: quem quer adotar (adopter_id) pede um animal ao dono dele';
 COMMENT ON COLUMN adoption_requests.status                IS 'PENDING, ACCEPTED, AWAITING_DELIVERY, CONCLUDED, REJECTED, CANCELLED, RETURNED (voltou ao doador) ou REHOMED (republicado pelo adotante)';
-COMMENT ON COLUMN adoption_requests.cancel_reason         IS 'Só em CANCELLED: ADOPTER_WITHDREW, OWNER_WITHDREW, ANIMAL_ADOPTED (outro pedido concluiu) ou ANIMAL_UNAVAILABLE (o dono tirou o animal do ar)';
+COMMENT ON COLUMN adoption_requests.cancel_reason         IS 'Só em CANCELLED: ADOPTER_WITHDREW, OWNER_WITHDREW, ANIMAL_ADOPTED (outro pedido concluiu), ANIMAL_UNAVAILABLE (o dono tirou o animal do ar), ACCOUNT_BANNED (uma das partes foi banida) ou LISTING_REMOVED (anúncio removido pela moderação)';
 COMMENT ON COLUMN adoption_requests.cancelled_from_status IS 'Status em que o pedido estava quando foi cancelado';
 COMMENT ON COLUMN adoption_requests.closed_at             IS 'Quando o pedido foi recusado ou cancelado';
 COMMENT ON COLUMN adoption_requests.match_score_at_adoption IS 'Score do AUmatch congelado na conclusão (nulo sem quiz completo) — base das faixas da taxa de reabandono';
@@ -388,8 +391,12 @@ CREATE TABLE IF NOT EXISTS events (
     cover_url    TEXT,
     status       VARCHAR(20)   NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'CANCELLED')),
     created_at   TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CHECK (end_time IS NULL OR end_time > start_time)
+    removed_by_moderation BOOLEAN NOT NULL DEFAULT FALSE,
+    CHECK (end_time IS NULL OR end_time > start_time),
+    CONSTRAINT chk_events_removed_by_moderation CHECK (NOT removed_by_moderation OR status = 'CANCELLED')
 );
+
+COMMENT ON COLUMN events.removed_by_moderation IS 'Cancelado pelo admin (sempre com status CANCELLED)';
 
 CREATE INDEX IF NOT EXISTS idx_events_ngo ON events (ngo_id);
 CREATE INDEX IF NOT EXISTS idx_events_status_date ON events (status, date);
@@ -406,6 +413,74 @@ CREATE TABLE IF NOT EXISTS event_attendances (
 );
 
 CREATE INDEX IF NOT EXISTS idx_event_attendances_user ON event_attendances (user_id);
+
+-- ------------------------------------------------------------
+-- reports — denúncias feitas no site. O alvo é polimórfico
+-- (target_type + target_id, sem chave estrangeira): pode ser um
+-- animal ou uma conta. As colunas target_* guardam a cópia do alvo
+-- no momento da denúncia, para o admin ver o que foi denunciado
+-- mesmo depois de o anúncio sair do ar. Banir uma conta usa
+-- users.active (false = suspensa pela moderação).
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS reports (
+    id                      BIGSERIAL     PRIMARY KEY,
+    reporter_id             BIGINT        NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    target_type             VARCHAR(10)   NOT NULL,
+    target_id               BIGINT        NOT NULL,
+
+    -- Cópia do alvo
+    target_name             VARCHAR(150)  NOT NULL,
+    target_photo_url        TEXT,
+    target_user_type        VARCHAR(10),
+    target_city             VARCHAR(100),
+    target_state            VARCHAR(2),
+    target_species          VARCHAR(20),
+    target_owner_id         BIGINT,
+    target_owner_name       VARCHAR(150),
+    target_owner_user_type  VARCHAR(10),
+
+    -- Denúncia
+    reason                  VARCHAR(20)   NOT NULL,
+    description             VARCHAR(500),
+
+    -- Julgamento
+    status                  VARCHAR(10)   NOT NULL DEFAULT 'PENDING',
+    resolution              VARCHAR(20),
+    resolved_by             BIGINT        REFERENCES users (id),
+    created_at              TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    resolved_at             TIMESTAMP,
+
+    CONSTRAINT chk_reports_target_type      CHECK (target_type IN ('ANIMAL', 'USER')),
+    CONSTRAINT chk_reports_user_types       CHECK (target_user_type IN ('PERSON', 'NGO')
+                                                AND target_owner_user_type IN ('PERSON', 'NGO')),
+    CONSTRAINT chk_reports_reason           CHECK (reason IN ('FAKE_PROFILE', 'SCAM', 'ANIMAL_ABUSE',
+                                                              'IMPROPER_CONTENT', 'SPAM', 'OTHER')),
+    CONSTRAINT chk_reports_fake_profile     CHECK (reason <> 'FAKE_PROFILE' OR target_type = 'USER'),
+    CONSTRAINT chk_reports_other            CHECK (reason <> 'OTHER' OR description IS NOT NULL),
+    CONSTRAINT chk_reports_status           CHECK (status IN ('PENDING', 'RESOLVED')),
+    CONSTRAINT chk_reports_resolution       CHECK (resolution IN ('LISTING_REMOVED', 'ACCOUNT_BANNED', 'DISMISSED')),
+    CONSTRAINT chk_reports_resolved         CHECK ((status = 'RESOLVED') = (resolution IS NOT NULL)
+                                               AND (status = 'RESOLVED') = (resolved_at IS NOT NULL)),
+    CONSTRAINT chk_reports_listing_removed  CHECK (resolution <> 'LISTING_REMOVED' OR target_type = 'ANIMAL')
+);
+
+-- Uma denúncia em análise por pessoa e alvo (o 409); julgada, libera outra
+CREATE UNIQUE INDEX IF NOT EXISTS uq_reports_pending  ON reports (reporter_id, target_type, target_id)
+    WHERE status = 'PENDING';
+-- Resolver o caso inteiro (todas as pendentes do mesmo alvo)
+CREATE INDEX IF NOT EXISTS idx_reports_pending_target ON reports (target_type, target_id)
+    WHERE status = 'PENDING';
+CREATE INDEX IF NOT EXISTS idx_reports_created        ON reports (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_reports_reporter       ON reports (reporter_id, created_at DESC);
+
+COMMENT ON TABLE  reports                  IS 'Denúncias de anúncios (ANIMAL) e perfis (USER), julgadas pelo admin';
+COMMENT ON COLUMN reports.target_id        IS 'Id do animal (ANIMAL) ou da conta (USER) — sem FK, porque o alvo é polimórfico';
+COMMENT ON COLUMN reports.target_name      IS 'Cópia do nome do alvo no momento da denúncia (as outras colunas target_* também são cópias)';
+COMMENT ON COLUMN reports.target_owner_id  IS 'Só em ANIMAL: o dono do anúncio — usado para resolver as denúncias quando ele é banido';
+COMMENT ON COLUMN reports.description      IS 'Até 500 caracteres; obrigatória quando reason = OTHER';
+COMMENT ON COLUMN reports.status           IS 'PENDING (em análise) ou RESOLVED (julgada)';
+COMMENT ON COLUMN reports.resolution       IS 'Só em RESOLVED: LISTING_REMOVED, ACCOUNT_BANNED ou DISMISSED';
+COMMENT ON COLUMN reports.resolved_by      IS 'O admin que julgou o caso';
 
 -- ============================================================
 -- Opcional: trazer as contas de teste do banco antigo (adocao_db)

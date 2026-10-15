@@ -83,7 +83,7 @@ src/test/java/...                           # Testes (JUnit 5 + Mockito + MockMv
 psql -U postgres -h localhost -f sql/schema.sql
 ```
 
-O script cria o banco `aucolher_db` (se ainda não existir) e as tabelas `users`, `ngo_team`, `ngo_visiting_hours`, `animals`, `animal_photos`, `favorites`, `match_profiles`, `adoption_requests`, `adoption_reviews`, `events` e `event_attendances`. Todas usam `IF NOT EXISTS`, então rodar o script de novo não apaga nada. É uma cópia de `docs/script_banco_aucolher.sql` do frontend — mantenha os dois iguais. Rode o script antes de subir a API: o Hibernate (`ddl-auto=validate`) não cria o banco nem as tabelas, só confere se elas batem com as entidades.
+O script cria o banco `aucolher_db` (se ainda não existir) e as tabelas `users`, `ngo_team`, `ngo_visiting_hours`, `animals`, `animal_photos`, `favorites`, `match_profiles`, `adoption_requests`, `adoption_reviews`, `events`, `event_attendances` e `reports`. Todas usam `IF NOT EXISTS`, então rodar o script de novo não apaga nada. É uma cópia de `docs/script_banco_aucolher.sql` do frontend — mantenha os dois iguais. Rode o script antes de subir a API: o Hibernate (`ddl-auto=validate`) não cria o banco nem as tabelas, só confere se elas batem com as entidades.
 
 #### Banco criado antes da padronização em inglês
 
@@ -145,6 +145,16 @@ psql -U postgres -h localhost -d aucolher_db -f sql/migrations/012_adoption_retu
 ```
 
 Nenhum dado existente muda: os pedidos já concluídos ficam com o score nulo (entram na taxa geral, fora das faixas). Pode ser repetida.
+
+#### Denúncias e moderação (migração 014)
+
+A 014 cria a tabela `reports` (denúncias de anúncios e perfis, com a cópia do alvo e a decisão do admin) e prepara a moderação: `animals.status` passa a aceitar `REMOVED`, `adoption_requests.cancel_reason` passa a aceitar `ACCOUNT_BANNED` e `LISTING_REMOVED` (e já `ACCOUNT_DELETED`, da futura exclusão de conta), e `events` ganha `removed_by_moderation`. O banimento usa a coluna `users.active`, que já existia. Sem ela a API não sobe (`Schema-validation: missing table [reports]`):
+
+```bash
+psql -U postgres -h localhost -d aucolher_db -f sql/migrations/014_reports_moderation.sql
+```
+
+Pode ser repetida. **Campanhas:** a tabela `campaigns` ainda não existe no backend, então a 014 não mexe nela. Quem criar a tabela (migração 007) deve incluir `removed_by_moderation BOOLEAN NOT NULL DEFAULT FALSE` com `CHECK (NOT removed_by_moderation OR deleted)`.
 
 #### Sem e-mail institucional (migração 015)
 
