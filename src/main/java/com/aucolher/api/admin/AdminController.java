@@ -1,6 +1,7 @@
 package com.aucolher.api.admin;
 
 import com.aucolher.api.admin.dto.AdminAnimalDTO;
+import com.aucolher.api.admin.dto.AdminStatsDTO;
 import com.aucolher.api.admin.dto.AdminUserDTO;
 import com.aucolher.api.admin.dto.UserStatusDTO;
 import com.aucolher.api.event.EventService;
@@ -25,9 +26,16 @@ import java.util.List;
 public class AdminController {
 
     private final AdminService adminService;
+    private final AdminStatsService statsService;
     private final ModerationService moderationService;
     private final EventService eventService;
     private final ReportService reportService;
+
+    /** Números e gráficos da Visão geral, com a taxa de reabandono. */
+    @GetMapping("/stats")
+    public ResponseEntity<AdminStatsDTO> stats() {
+        return ResponseEntity.ok(statsService.stats());
+    }
 
     // ===================== Listas =====================
 
