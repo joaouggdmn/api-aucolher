@@ -5,7 +5,9 @@ import com.aucolher.api.auth.dto.NgoRegistrationDTO;
 import com.aucolher.api.auth.dto.PersonRegistrationDTO;
 import com.aucolher.api.auth.dto.LoginDTO;
 import com.aucolher.api.security.JwtService;
+import com.aucolher.api.security.SuspendedAccount;
 import com.aucolher.api.shared.exception.BusinessException;
+import com.aucolher.api.shared.exception.ForbiddenException;
 import com.aucolher.api.shared.exception.InvalidCredentialsException;
 import com.aucolher.api.user.UserRepository;
 import com.aucolher.api.user.dto.UserResponseDTO;
@@ -108,12 +110,13 @@ public class AuthService {
             throw new InvalidCredentialsException("Esta conta utiliza login via Google. Use a autenticação OAuth2");
         }
 
-        if (!user.getActive()) {
-            throw new InvalidCredentialsException("Usuário inativo");
-        }
-
         if (!passwordEncoder.matches(dto.password(), user.getPassword())) {
             throw new InvalidCredentialsException("E-mail ou senha inválidos");
+        }
+
+        // Só depois da senha: quem não sabe a senha não descobre que a conta foi suspensa
+        if (!user.getActive()) {
+            throw new ForbiddenException(SuspendedAccount.MESSAGE);
         }
 
         return user;

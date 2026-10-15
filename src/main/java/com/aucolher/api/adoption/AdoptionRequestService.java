@@ -70,7 +70,7 @@ public class AdoptionRequestService {
     public AdoptionRequestDTO create(String email, Long animalId) {
         User adopter = findUser(email);
         Animal animal = animalRepository.findById(animalId)
-                .filter(found -> found.getStatus() != AnimalStatus.INACTIVE)
+                .filter(Animal::isPubliclyVisible)
                 .orElseThrow(() -> new ResourceNotFoundException("Animal não encontrado"));
 
         if (animal.isOwnedBy(email)) {
@@ -351,13 +351,25 @@ public class AdoptionRequestService {
     }
 
     /**
-     * O dono tirou o animal da vitrine por conta própria: os pedidos ativos
-     * dele são cancelados (ANIMAL_UNAVAILABLE). Roda na mesma transação.
+     * O animal saiu da vitrine: os pedidos ativos dele são cancelados —
+     * ANIMAL_UNAVAILABLE quando foi o dono, LISTING_REMOVED quando foi a
+     * moderação. Roda na mesma transação.
      */
     @EventListener
     public void onAnimalLeftListing(AnimalLeftListingEvent event) {
+        CancelReason reason = event.byModeration() ? CancelReason.LISTING_REMOVED : CancelReason.ANIMAL_UNAVAILABLE;
         requestRepository.findByAnimalIdAndStatusIn(event.animalId(), AdoptionStatus.ACTIVE)
-                .forEach(request -> request.cancel(CancelReason.ANIMAL_UNAVAILABLE));
+                .forEach(request -> request.cancel(reason));
+    }
+
+    /**
+     * Uma conta saiu de cena (banimento): os pedidos ativos em que ela é
+     * adotante ou dona do animal são cancelados com o motivo dado. Pedidos
+     * já encerrados não mudam. Roda na transação de quem chama.
+     */
+    @Transactional
+    public void cancelAllForAccount(Long userId, CancelReason reason) {
+        requestRepository.findInvolving(userId, AdoptionStatus.ACTIVE).forEach(request -> request.cancel(reason));
     }
 
     private static void requireRole(boolean hasRole, String message) {

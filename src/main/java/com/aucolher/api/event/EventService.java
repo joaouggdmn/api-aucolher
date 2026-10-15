@@ -43,12 +43,18 @@ public class EventService {
                 EventStatus.ACTIVE, today)
                 : events.findByNgoIdAndStatusAndDateGreaterThanEqualOrderByDateAscStartTimeAsc(
                 ngoId, EventStatus.ACTIVE, today);
-        return toDtos(list);
+        return toPublicDtos(list);
     }
 
     @Transactional(readOnly = true)
     public EventResponseDTO getById(Long id) {
-        return toDto(findActive(id));
+        return toDto(findVisible(id));
+    }
+
+    /** Painel do admin: todos os eventos, em qualquer status, com a situação da ONG. */
+    @Transactional(readOnly = true)
+    public List<EventResponseDTO> listForAdmin() {
+        return toDtos(events.findAllByOrderByDateDescStartTimeDesc());
     }
 
     @Transactional(readOnly = true)
@@ -62,7 +68,7 @@ public class EventService {
     @Transactional(readOnly = true)
     public List<EventResponseDTO> listAttending(Authentication auth) {
         User user = currentUser(auth);
-        return toDtos(events.findAttendedBy(user.getId()));
+        return toPublicDtos(events.findAttendedBy(user.getId()));
     }
 
     @Transactional(readOnly = true)
@@ -130,12 +136,25 @@ public class EventService {
         }
     }
 
+    /**
+     * Moderação: o admin remove o evento. Ele vira CANCELLED com
+     * removed_by_moderation, mesmo sem confirmados (a linha fica, para o admin
+     * ver o que removeu). Já cancelado ou inexistente: 404.
+     */
+    @Transactional
+    public void removeByModeration(Long id) {
+        Event event = lockActive(id);
+        event.setStatus(EventStatus.CANCELLED);
+        event.setRemovedByModeration(true);
+    }
+
     // -------------------------------------------------------------- presença
 
     @Transactional
     public EventResponseDTO confirmAttendance(Long id, Authentication auth) {
         User user = currentUser(auth);
         Event event = lockExisting(id);               // trava a linha: vagas sem corrida
+        requireActiveNgo(event);
         checkAttendanceRules(event, user);
         if (!attendances.existsByEventIdAndUserId(id, user.getId())) {   // idempotente
             if (event.getCapacity() != null
@@ -152,6 +171,7 @@ public class EventService {
     public EventResponseDTO cancelAttendance(Long id, Authentication auth) {
         User user = currentUser(auth);
         Event event = lockExisting(id);
+        requireActiveNgo(event);
         checkAttendanceRules(event, user);
         attendances.deleteAttendance(id, user.getId());                  // idempotente
         return toDto(event);
@@ -219,6 +239,21 @@ public class EventService {
                 .orElseThrow(() -> new ResourceNotFoundException("Evento não encontrado."));
     }
 
+    /** O detalhe público: evento ativo de uma ONG que não foi banida pela moderação. */
+    private Event findVisible(Long id) {
+        Event event = findActive(id);
+        requireActiveNgo(event);
+        return event;
+    }
+
+    /** ONG banida: os eventos dela somem do site (404), e voltam se ela for reativada. */
+    private void requireActiveNgo(Event event) {
+        boolean active = users.findById(event.getNgoId()).map(ngo -> Boolean.TRUE.equals(ngo.getActive())).orElse(false);
+        if (!active) {
+            throw new ResourceNotFoundException("Evento não encontrado.");
+        }
+    }
+
     private Event lockActive(Long id) {
         return events.findByIdForUpdate(id)
                 .filter(e -> e.getStatus() == EventStatus.ACTIVE)
@@ -257,7 +292,8 @@ public class EventService {
         if (ngo == null) {
             return null;
         }
-        return new NgoSummaryDTO(ngo.getId(), ngo.getName(), Boolean.TRUE.equals(ngo.getVerified()), ngo.getPhotoUrl());
+        return new NgoSummaryDTO(ngo.getId(), ngo.getName(), Boolean.TRUE.equals(ngo.getVerified()), ngo.getPhotoUrl(),
+                Boolean.TRUE.equals(ngo.getActive()));
     }
 
     private Map<Long, User> usersById(Collection<Long> ids) {
@@ -270,6 +306,14 @@ public class EventService {
 
     private EventResponseDTO toDto(Event event) {
         return toDtos(List.of(event)).get(0);
+    }
+
+    /** Rotas públicas: os eventos de ONG banida pela moderação somem. */
+    private List<EventResponseDTO> toPublicDtos(List<Event> list) {
+        Map<Long, User> ngos = usersById(list.stream().map(Event::getNgoId).toList());
+        return toDtos(list.stream()
+                .filter(e -> ngos.containsKey(e.getNgoId()) && Boolean.TRUE.equals(ngos.get(e.getNgoId()).getActive()))
+                .toList());
     }
 
     /** Monta os DTOs com 2 consultas extras (contagens e ONGs), sem N+1. */

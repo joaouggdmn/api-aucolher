@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
+import java.util.Collection;
 import java.util.List;
 
 public interface FavoriteRepository extends JpaRepository<Favorite, Long> {
@@ -27,14 +28,18 @@ public interface FavoriteRepository extends JpaRepository<Favorite, Long> {
     @Query("DELETE FROM Favorite f WHERE f.user.id = :userId AND f.animal.id = :animalId")
     void remove(Long userId, Long animalId);
 
-    /** Favoritos com o animal e o dono já carregados, do mais recente para o mais antigo. */
+    /**
+     * Favoritos com o animal e o dono já carregados, do mais recente para o
+     * mais antigo — sem os anúncios escondidos e sem os de dono banido.
+     */
     @EntityGraph(attributePaths = {"animal", "animal.owner"})
-    List<Favorite> findByUserIdAndAnimalStatusNotOrderByCreatedAtDescIdDesc(Long userId, AnimalStatus status);
+    List<Favorite> findByUserIdAndAnimalStatusNotInAndAnimalOwnerActiveTrueOrderByCreatedAtDescIdDesc(
+            Long userId, Collection<AnimalStatus> hiddenStatuses);
 
     @Query("""
             SELECT f.animal.id FROM Favorite f
-            WHERE f.user.id = :userId AND f.animal.status <> :hiddenStatus
+            WHERE f.user.id = :userId AND f.animal.status NOT IN :hiddenStatuses AND f.animal.owner.active = true
             ORDER BY f.createdAt DESC, f.id DESC
             """)
-    List<Long> findAnimalIds(Long userId, AnimalStatus hiddenStatus);
+    List<Long> findAnimalIds(Long userId, Collection<AnimalStatus> hiddenStatuses);
 }
