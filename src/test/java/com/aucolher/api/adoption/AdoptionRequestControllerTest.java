@@ -1,6 +1,7 @@
 package com.aucolher.api.adoption;
 
 import com.aucolher.api.adoption.entity.AdoptionStatus;
+import com.aucolher.api.adoption.entity.ReturnReason;
 import com.aucolher.api.config.SecurityConfig;
 import com.aucolher.api.security.CustomOAuth2UserService;
 import com.aucolher.api.security.CustomUserDetailsService;
@@ -17,6 +18,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -116,5 +118,22 @@ class AdoptionRequestControllerTest {
                 .andExpect(jsonPath("$.errors.status").exists());
         mockMvc.perform(patch("/api/adoption-requests/50/status").contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"DONE\"}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void registeringAReturnRequiresLogin() throws Exception {
+        mockMvc.perform(post("/api/adoption-requests/50/return").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @WithMockUser(username = "ngo@email.com", roles = "NGO")
+    void registersAReturn() throws Exception {
+        mockMvc.perform(post("/api/adoption-requests/50/return").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"returnDate\":\"2026-10-01\",\"reason\":\"OTHER\",\"note\":\"  Mudou de casa  \"}"))
+                .andExpect(status().isOk());
+        verify(requestService).registerReturn(eq(50L), eq("ngo@email.com"), argThat(body ->
+                body.returnDate().toString().equals("2026-10-01") && body.reason() == ReturnReason.OTHER
+                        && body.note().equals("Mudou de casa")));
     }
 }

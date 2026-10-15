@@ -3,6 +3,7 @@ package com.aucolher.api.adoption;
 import com.aucolher.api.adoption.dto.AdoptionRequestDTO;
 import com.aucolher.api.adoption.dto.ChangeRequestStatusDTO;
 import com.aucolher.api.adoption.dto.NewAdoptionRequestDTO;
+import com.aucolher.api.adoption.dto.RegisterReturnDTO;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -58,5 +59,16 @@ public class AdoptionRequestController {
                                                            @Valid @RequestBody ChangeRequestStatusDTO body,
                                                            @AuthenticationPrincipal UserDetails loggedUser) {
         return ResponseEntity.ok(requestService.changeStatus(id, loggedUser.getUsername(), body.status()));
+    }
+
+    /**
+     * "Animal retornado": quem doou registra (ou corrige) que o animal voltou —
+     * `{ "returnDate": "2026-11-03", "reason": "OTHER_PETS", "note": "..." }`.
+     */
+    @PostMapping("/{id}/return")
+    public ResponseEntity<AdoptionRequestDTO> registerReturn(@PathVariable Long id,
+                                                             @RequestBody RegisterReturnDTO body,
+                                                             @AuthenticationPrincipal UserDetails loggedUser) {
+        return ResponseEntity.ok(requestService.registerReturn(id, loggedUser.getUsername(), body));
     }
 }
