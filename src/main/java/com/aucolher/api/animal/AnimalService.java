@@ -163,6 +163,19 @@ public class AnimalService {
         return saveAndRespond(animal);
     }
 
+    /**
+     * Retorno de uma adoção (uso interno, chamado pelo pedido): o anúncio volta
+     * para o doador fora do ar. É a única saída de ADOPTED — o PUT e o PATCH
+     * públicos continuam recusando animal adotado. Depois disso o doador edita
+     * e reativa o anúncio pelo caminho de sempre.
+     */
+    @Transactional
+    public void returnToOwner(Animal animal) {
+        if (animal.getStatus() == AnimalStatus.ADOPTED) {
+            animal.setStatus(AnimalStatus.INACTIVE);
+        }
+    }
+
     /** "Excluir" o anúncio: exclusão lógica, o animal vira INACTIVE. */
     @Transactional
     public void deactivate(Long id, String ownerEmail) {

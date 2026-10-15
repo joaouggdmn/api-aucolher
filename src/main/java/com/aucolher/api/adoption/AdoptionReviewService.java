@@ -38,7 +38,8 @@ public class AdoptionReviewService {
     public AdoptionRequestDTO saveMine(Long requestId, String email, SaveReviewDTO body) {
         AdoptionRequest request = requestService.findRequest(requestId);
         ReviewRole role = roleOf(request, email);
-        if (request.getStatus() != AdoptionStatus.CONCLUDED) {
+        // O retorno e o repasse não apagam a adoção: as avaliações continuam liberadas
+        if (!AdoptionStatus.HAPPENED.contains(request.getStatus())) {
             throw new BusinessException("Só dá para avaliar depois que a adoção for concluída");
         }
 
@@ -82,7 +83,7 @@ public class AdoptionReviewService {
                 Math.round(average * 10) / 10.0,
                 reviews.size(),
                 distribution,
-                requestRepository.countByStatusInvolving(userId, AdoptionStatus.CONCLUDED),
+                requestRepository.countByStatusInvolving(userId, AdoptionStatus.HAPPENED),
                 reviews.stream().map(UserReviewDTO::from).toList());
     }
 

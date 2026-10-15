@@ -505,13 +505,40 @@ O dono pode aceitar vários pedidos do mesmo animal; vale o primeiro que conclui
   "adopter": { "id": 4, "name": "Maria", "photoUrl": null, "userType": "PERSON", "city": "Criciúma", "state": "SC",
                "matchProfile": { "housing": "APARTMENT", "...": "...", "complete": true } },
   "matchScore": 85,
+  "matchScoreAtAdoption": null,
+  "return": null,
   "reviews": { "adopter": null, "owner": null }
 }
 ```
 
 - `animal` é o card da listagem (`AnimalSummaryDTO`), com o dono em `animal.owner`.
 - `adopter.matchProfile` traz as respostas do quiz do AUmatch (nulo para ONG ou para quem não respondeu); `matchScore` é a compatibilidade atual entre elas e o animal, calculada pelo `MatchScoreCalculator`.
+- `matchScoreAtAdoption` é o score **congelado** quando o pedido vira `CONCLUDED`: não muda se o quiz ou o animal mudarem depois. É nulo sem o quiz completo (as 7 respostas), para ONG adotando e nos pedidos concluídos antes da migração 012.
+- `return` traz o retorno ou o repasse (abaixo); é nulo fora de `RETURNED` e `REHOMED`.
 - `reviews` traz as avaliações das duas partes (ver abaixo).
+
+### Retorno e repasse (taxa de reabandono)
+
+Uma adoção `CONCLUDED` pode não dar certo por dois caminhos, que contam igual na taxa de reabandono do painel do admin. Vale o primeiro: depois do retorno o adotante não republica, e depois do repasse o doador não registra retorno. **Adoção feita por ONG fica fora de tudo** (é resgate, não adoção final): as rotas respondem 400 "Adoções feitas por ONG não têm retorno nem repasse".
+
+| Método e rota | Quem | O que faz |
+|---|---|---|
+| `POST /api/adoption-requests/{id}/return` | dono do animal | `{ "returnDate": "2026-11-03", "reason": "OTHER_PETS", "note": "..." }` — o pedido vira `RETURNED` e o anúncio volta para o doador fora do ar (`ADOPTED → INACTIVE`, a única saída de `ADOPTED`). Repetir num pedido já `RETURNED` corrige os dados sem mexer no animal |
+
+- `reason`: `BEHAVIOR`, `OTHER_PETS`, `CHILDREN`, `HOUSING_OR_ROUTINE`, `COSTS`, `ANIMAL_HEALTH` ou `OTHER` (que exige `note`). `note` tem até 500 caracteres.
+- A data não pode ser futura nem anterior à conclusão.
+- O `PATCH .../status` não aceita `RETURNED` nem `REHOMED`: cada um tem a sua ação.
+
+```json
+"return": {
+  "type": "RETURNED",
+  "date": "2026-11-03",
+  "reason": "OTHER_PETS",
+  "note": "Não se adaptou com os dois gatos da casa.",
+  "recordedAt": "2026-11-03T18:20:00",
+  "rehomedAnimalId": null
+}
+```
 
 ### Avaliações
 
@@ -519,7 +546,7 @@ Depois que o pedido é concluído, cada parte pode avaliar a outra uma vez: o ad
 
 | Método e rota | Login | O que faz |
 |---|---|---|
-| `PUT /api/adoption-requests/{id}/review` | parte do pedido | `{ "rating": 5, "comment": "..." }` — cria ou edita a minha avaliação e responde com o pedido. Só em `CONCLUDED` |
+| `PUT /api/adoption-requests/{id}/review` | parte do pedido | `{ "rating": 5, "comment": "..." }` — cria ou edita a minha avaliação e responde com o pedido. Só depois da adoção (`CONCLUDED`, `RETURNED` ou `REHOMED`) |
 | `DELETE /api/adoption-requests/{id}/review` | parte do pedido | Apaga a minha avaliação — responde 204 |
 | `GET /api/users/{id}/reviews` | não | Resumo público de um perfil |
 
@@ -539,7 +566,7 @@ Depois que o pedido é concluído, cada parte pode avaliar a outra uma vez: o ad
 }
 ```
 
-`adoptionsCount` conta as adoções concluídas em que a conta participou, como dona do animal ou como adotante.
+`adoptionsCount` conta as adoções que aconteceram (`CONCLUDED`, `RETURNED` ou `REHOMED`) em que a conta participou, como dona do animal ou como adotante.
 
 ### Admin: pedidos
 

@@ -3,12 +3,14 @@ package com.aucolher.api.adoption;
 import com.aucolher.api.adoption.dto.AdminAdoptionRequestDTO;
 import com.aucolher.api.adoption.dto.AdopterDTO;
 import com.aucolher.api.adoption.dto.AdoptionRequestDTO;
+import com.aucolher.api.adoption.dto.RegisterReturnDTO;
 import com.aucolher.api.adoption.dto.RequestReviewsDTO;
 import com.aucolher.api.adoption.dto.ReviewDTO;
 import com.aucolher.api.adoption.entity.AdoptionReview;
 import com.aucolher.api.adoption.entity.AdoptionRequest;
 import com.aucolher.api.adoption.entity.AdoptionStatus;
 import com.aucolher.api.adoption.entity.CancelReason;
+import com.aucolher.api.adoption.entity.ReturnReason;
 import com.aucolher.api.adoption.entity.ReviewRole;
 import com.aucolher.api.animal.AnimalLeftListingEvent;
 import com.aucolher.api.animal.AnimalRepository;
@@ -24,6 +26,7 @@ import com.aucolher.api.shared.exception.ForbiddenException;
 import com.aucolher.api.shared.exception.ResourceNotFoundException;
 import com.aucolher.api.user.UserRepository;
 import com.aucolher.api.user.entity.User;
+import com.aucolher.api.user.entity.UserType;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +35,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -179,14 +183,16 @@ public class AdoptionRequestService {
                 }
             }
             case PENDING -> throw new BusinessException("Um pedido não volta a ficar pendente");
+            case RETURNED, REHOMED -> throw new BusinessException("Retorno e repasse têm ações próprias");
         }
 
         return toDtos(List.of(requestRepository.saveAndFlush(request))).get(0);
     }
 
     /**
-     * Fecha a adoção numa transação só: o pedido é concluído, o animal vira
-     * ADOPTED e os outros pedidos ativos dele são cancelados (ANIMAL_ADOPTED).
+     * Fecha a adoção numa transação só: o pedido é concluído (com o score do
+     * AUmatch congelado), o animal vira ADOPTED e os outros pedidos ativos dele
+     * são cancelados (ANIMAL_ADOPTED).
      * A linha do animal fica travada (FOR UPDATE) até o fim — se dois
      * adotantes confirmarem ao mesmo tempo, o segundo encontra o animal já
      * adotado e o próprio pedido já cancelado.
@@ -199,11 +205,85 @@ public class AdoptionRequestService {
             throw new BusinessException("Este animal já foi adotado");
         }
 
-        request.conclude();
+        request.conclude(frozenScore(request));
         requestRepository.findByAnimalIdAndStatusIn(animal.getId(), AdoptionStatus.ACTIVE).stream()
                 .filter(other -> !other.getId().equals(request.getId()))
                 .forEach(other -> other.cancel(CancelReason.ANIMAL_ADOPTED));
         animal.setStatus(AnimalStatus.ADOPTED);
+    }
+
+    /**
+     * O score que mede a taxa de reabandono por faixa: o do momento da
+     * conclusão, que não muda mais. Só existe para pessoa com o quiz completo;
+     * ONG adotando ou quiz pela metade ficam sem (null).
+     */
+    private Integer frozenScore(AdoptionRequest request) {
+        User adopter = request.getAdopter();
+        if (adopter.getUserType() == UserType.NGO) return null;
+        return matchProfileRepository.findById(adopter.getId())
+                .filter(MatchProfile::isComplete)
+                .map(profile -> MatchScoreCalculator.score(profile, request.getAnimal()).score())
+                .orElse(null);
+    }
+
+    // ===================== Retorno e repasse (taxa de reabandono) =====================
+
+    /**
+     * "Animal retornado": quem doou registra que o animal voltou. O pedido vira
+     * RETURNED e o anúncio volta para o doador fora do ar (INACTIVE). Repetir
+     * num pedido já RETURNED corrige a data, o motivo e a nota, sem mexer no animal.
+     * Checagens na ordem do contrato: papel, adotante ONG, status e corpo.
+     */
+    @Transactional
+    public AdoptionRequestDTO registerReturn(Long id, String email, RegisterReturnDTO body) {
+        AdoptionRequest request = findRequest(id);
+        requireRole(request.isOwnedBy(email), "Só quem doou o animal registra o retorno");
+        requireNotNgoAdoption(request);
+        lock(request);
+        if (request.getStatus() == AdoptionStatus.REHOMED) {
+            throw new BusinessException("O adotante já anunciou este animal para uma nova adoção");
+        }
+        requireStatus(request, "Só uma adoção concluída pode ter o retorno registrado",
+                AdoptionStatus.CONCLUDED, AdoptionStatus.RETURNED);
+        requireReason(body.reason(), body.note());
+        requireReturnDate(request, body.returnDate());
+
+        if (request.getStatus() == AdoptionStatus.CONCLUDED) {
+            animalService.returnToOwner(request.getAnimal());
+        }
+        request.recordReturn(body.returnDate(), body.reason(), body.note());
+        return toDtos(List.of(requestRepository.saveAndFlush(request))).get(0);
+    }
+
+    /** Resgate de ONG não é adoção final: não tem retorno nem repasse, e fica fora da taxa. */
+    private static void requireNotNgoAdoption(AdoptionRequest request) {
+        if (request.getAdopter().getUserType() == UserType.NGO) {
+            throw new BusinessException("Adoções feitas por ONG não têm retorno nem repasse");
+        }
+    }
+
+    /**
+     * "Vale o primeiro": a linha do pedido fica travada (FOR UPDATE) até o fim,
+     * e o status é conferido já com o valor do banco.
+     */
+    private void lock(AdoptionRequest request) {
+        entityManager.refresh(request, LockModeType.PESSIMISTIC_WRITE);
+    }
+
+    private static void requireReason(ReturnReason reason, String note) {
+        if (reason == null) throw new BusinessException("Escolha o motivo");
+        if (reason == ReturnReason.OTHER && note == null) throw new BusinessException("Descreva o motivo");
+        if (note != null && note.length() > 500) {
+            throw new BusinessException("A observação pode ter no máximo 500 caracteres");
+        }
+    }
+
+    private static void requireReturnDate(AdoptionRequest request, LocalDate date) {
+        if (date == null) throw new BusinessException("Informe a data do retorno");
+        if (date.isAfter(LocalDate.now())) throw new BusinessException("A data do retorno não pode ser futura");
+        if (date.isBefore(request.getConcludedAt().toLocalDate())) {
+            throw new BusinessException("A data do retorno não pode ser anterior à adoção");
+        }
     }
 
     /**
@@ -258,6 +338,7 @@ public class AdoptionRequestService {
                     cards.get(request.getAnimal().getId()),
                     AdopterDTO.from(request.getAdopter(), profile),
                     MatchScoreCalculator.score(profile, request.getAnimal()).score(),
+                    null,
                     reviewsOf(reviews.getOrDefault(request.getId(), List.of())));
         }).toList();
     }
