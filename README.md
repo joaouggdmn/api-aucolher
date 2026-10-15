@@ -168,6 +168,16 @@ psql -U postgres -h localhost -d aucolher_db -f sql/migrations/014_reports_moder
 
 Pode ser repetida. **Campanhas:** a tabela `campaigns` ainda não existe no backend, então a 014 não mexe nela. Quem criar a tabela (migração 007) deve incluir `removed_by_moderation BOOLEAN NOT NULL DEFAULT FALSE` com `CHECK (NOT removed_by_moderation OR deleted)`.
 
+#### Edição pela moderação (migração 016)
+
+A 016 acrescenta `moderated_at` e `moderated_by` em `users`, `animals` e `events`: quando o admin edita a conta, o anúncio ou o evento de outra pessoa, fica registrado quando e quem. Sem ela a API não sobe (`Schema-validation: missing column [moderated_at]`):
+
+```bash
+psql -U postgres -h localhost -d aucolher_db -f sql/migrations/016_moderation_edits.sql
+```
+
+Só acrescenta colunas nulas e pode ser repetida.
+
 #### Sem e-mail institucional (migração 015)
 
 A 015 apaga a coluna `users.institutional_email`: o contato público da ONG passa a ser o próprio e-mail de login. (As migrações 007 a 014 estão reservadas para as próximas sprints.) A API sobe com ou sem ela, porque o `validate` não reclama de coluna sobrando, mas rode para o banco ficar igual ao `schema.sql`:
@@ -616,7 +626,7 @@ Qualquer conta logada de pessoa ou ONG denuncia um anúncio de animal (`ANIMAL`)
 
 Tudo em `/api/admin/**` é só da conta ADMIN: sem token, 401; com token de pessoa ou ONG, 403. As listas não são paginadas (o volume do TCC é pequeno; a busca e os filtros ficam no frontend).
 
-**O admin modera, mas não participa nem edita.** Ele remove, bane e reativa (pelas rotas abaixo); não edita o conteúdo de ninguém, porque quem publica responde pelo que publicou. Fora do painel, as rotas de participante respondem 403 para a conta ADMIN:
+**O admin modera, mas não participa.** Ele remove, bane, reativa e **edita** contas, anúncios e eventos de outras pessoas (pelas rotas abaixo). O conteúdo editado continua em nome do dono, e fica registrado quando e por quem foi editado (`moderated_at` / `moderated_by`, migração 016): o dono vê "Editado pela moderação". Fora do painel, as rotas de participante respondem 403 para a conta ADMIN:
 
 | Rota | `message` |
 |---|---|
@@ -637,10 +647,16 @@ Tudo em `/api/admin/**` é só da conta ADMIN: sem token, 401; com token de pess
 | `POST /api/admin/reports/{id}/dismiss` | Arquiva o caso (esta denúncia e as outras pendentes do mesmo alvo) e devolve as arquivadas |
 | `POST /api/admin/reports/{id}/ban` | Bane a conta por trás do caso (o perfil denunciado ou o dono do anúncio) e devolve as denúncias resolvidas |
 | `PATCH /api/admin/users/{id}/status` | `{ "active": false }` bane, `{ "active": true }` reativa; devolve a conta |
+| `GET /api/admin/users/{id}` | A conta inteira para editar: os campos de "Minha conta" (com o `email` de login e `moderatedAt`) + `active` |
+| `PUT /api/admin/users/{id}` | `{ "email": "...", "profile": { ...o corpo de PUT /api/users/me } }` — edita o perfil e o e-mail de login |
+| `PUT /api/admin/animals/{id}` | O corpo de `PUT /api/animals/{id}` — edita o anúncio (ativo, fora do ar ou adotado; removido não muda) |
+| `PUT /api/admin/events/{id}` | O corpo de `PUT /api/events/{id}` — edita o evento, com as regras da ONG (só ativo e que ainda não aconteceu) |
 | `DELETE /api/admin/animals/{id}` | Remove o anúncio (`REMOVED`) — 204 |
 | `DELETE /api/admin/events/{id}` | Remove o evento (`CANCELLED` + `removedByModeration`) — 204 |
 
 **Banir** (numa transação): a conta para de entrar e o token dela deixa de valer; as denúncias pendentes contra o perfil e contra os anúncios dela são resolvidas (`ACCOUNT_BANNED`); os pedidos ativos em que ela é adotante ou dona são cancelados (`ACCOUNT_BANNED`). Os animais e eventos dela **não mudam**: somem das rotas públicas (vitrine, perfil, favoritos, deck, detalhe, eventos) e voltam se a conta for reativada. Pedidos cancelados e denúncias resolvidas não voltam. Contas admin não podem ser banidas (400).
+
+**Editar uma conta:** valem as mesmas regras de "Minha conta" (a ONG precisa do endereço completo). Contas admin não são editadas (400). O e-mail novo precisa ser único (409 "Este e-mail já está em uso por outra conta."), e conta que entra pelo Google não troca de e-mail (400), porque o próximo login pelo Google criaria outra conta. **Trocar o e-mail derruba a sessão da conta** (o token é pelo e-mail): ela entra de novo com o e-mail novo.
 
 **Remover anúncio:** vira `REMOVED`, sai do site (o detalhe responde 404 para todos, menos para o admin), os pedidos ativos são cancelados (`LISTING_REMOVED`) e as denúncias contra ele são resolvidas. O dono continua vendo o anúncio em `/api/animals/mine`, mas `PUT`, `PATCH /status` e `DELETE` respondem 403. Animal adotado não é removido (fica como histórico). Não há desfazer.
 

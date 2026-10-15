@@ -26,6 +26,7 @@ import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -72,7 +73,38 @@ class AdminControllerTest {
         mockMvc.perform(get("/api/admin/animals")).andExpect(status().isForbidden());
         mockMvc.perform(patch("/api/admin/users/5/status").contentType(MediaType.APPLICATION_JSON).content("{\"active\":false}"))
                 .andExpect(status().isForbidden());
+        mockMvc.perform(put("/api/admin/users/5").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(put("/api/admin/events/3").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isForbidden());
         verifyNoInteractions(adminService, moderationService);
+    }
+
+    @Test
+    @WithMockUser(username = "admin@email.com", roles = "ADMIN")
+    void adminEditsAnAccountWithTheProfileRules() throws Exception {
+        mockMvc.perform(get("/api/admin/users/5")).andExpect(status().isOk());
+        verify(moderationService).getUser(5L);
+
+        mockMvc.perform(put("/api/admin/users/5").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"sem-arroba\",\"profile\":{\"name\":\"M\"}}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.email").exists())
+                .andExpect(jsonPath("$.errors['profile.name']").exists());
+        verify(moderationService, never()).updateUser(anyLong(), any(), any());
+
+        mockMvc.perform(put("/api/admin/users/5").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"maria@email.com\",\"profile\":{\"name\":\"Maria\",\"team\":[],\"visitingHours\":[]}}"))
+                .andExpect(status().isOk());
+        verify(moderationService).updateUser(eq(5L), any(), eq("admin@email.com"));
+    }
+
+    @Test
+    @WithMockUser(username = "admin@email.com", roles = "ADMIN")
+    void animalEditUsesTheRegistrationValidation() throws Exception {
+        mockMvc.perform(put("/api/admin/animals/8").contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"\"}"))
+                .andExpect(status().isBadRequest());
+        verify(moderationService, never()).updateAnimal(anyLong(), any(), any());
     }
 
     @Test
