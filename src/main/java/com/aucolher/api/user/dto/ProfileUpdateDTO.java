@@ -32,10 +32,6 @@ public record ProfileUpdateDTO(
 
         // ===================== Perfil de ONG =====================
 
-        @Email(message = "E-mail institucional em formato inválido")
-        @Size(max = 150, message = "O e-mail institucional deve ter no máximo 150 caracteres")
-        String institutionalEmail,
-
         @Pattern(regexp = "^[A-Za-z0-9._]{1,30}$", message = "Usuário do Instagram inválido")
         String instagram,
 
@@ -89,7 +85,6 @@ public record ProfileUpdateDTO(
         name = Sanitizer.text(name);
         photoUrl = Sanitizer.text(photoUrl);
         bio = Sanitizer.text(bio);
-        institutionalEmail = Sanitizer.text(institutionalEmail);
         instagram = Sanitizer.withoutAt(instagram);
         twitter = Sanitizer.withoutAt(twitter);
         facebook = Sanitizer.withProtocol(facebook);
