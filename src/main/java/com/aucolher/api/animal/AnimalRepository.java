@@ -43,6 +43,19 @@ public interface AnimalRepository extends JpaRepository<Animal, Long>, JpaSpecif
     /** Anúncios de uma conta, em qualquer status (painel do admin). */
     long countByOwnerId(Long ownerId);
 
+    /** Painel do admin: todos os anúncios, em qualquer status, dos mais recentes para os mais antigos. */
+    @EntityGraph(attributePaths = "owner")
+    List<Animal> findAllByOrderByCreatedAtDescIdDesc();
+
+    /** Quantos anúncios cada conta tem, em qualquer status, numa consulta só. */
+    @Query("SELECT a.owner.id AS ownerId, count(a) AS total FROM Animal a GROUP BY a.owner.id")
+    List<OwnerCount> countByOwner();
+
+    interface OwnerCount {
+        Long getOwnerId();
+        Long getTotal();
+    }
+
     /** O anúncio republicado a partir de um pedido de adoção (repasse). */
     Optional<Animal> findByOriginRequestId(Long requestId);
 

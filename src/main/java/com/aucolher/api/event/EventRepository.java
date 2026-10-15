@@ -28,6 +28,9 @@ public interface EventRepository extends JpaRepository<Event, Long> {
     /** Todos os eventos da ONG (inclusive passados), sem os CANCELLED. */
     List<Event> findByNgoIdAndStatusOrderByDateDescStartTimeDesc(Long ngoId, EventStatus status);
 
+    /** Painel do admin: todos os eventos, da data mais distante para a mais antiga. */
+    List<Event> findAllByOrderByDateDescStartTimeDesc();
+
     /** Eventos em que o usuário confirmou presença (inclusive passados e CANCELLED). */
     @Query("select e from Event e, EventAttendance a "
             + "where a.eventId = e.id and a.userId = :userId "

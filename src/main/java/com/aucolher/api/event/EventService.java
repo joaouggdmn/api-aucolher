@@ -51,6 +51,12 @@ public class EventService {
         return toDto(findVisible(id));
     }
 
+    /** Painel do admin: todos os eventos, em qualquer status, com a situação da ONG. */
+    @Transactional(readOnly = true)
+    public List<EventResponseDTO> listForAdmin() {
+        return toDtos(events.findAllByOrderByDateDescStartTimeDesc());
+    }
+
     @Transactional(readOnly = true)
     public List<EventResponseDTO> listMine(Authentication auth) {
         User user = currentUser(auth);

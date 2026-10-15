@@ -1,7 +1,11 @@
 package com.aucolher.api.admin;
 
+import com.aucolher.api.admin.dto.AdminAnimalDTO;
 import com.aucolher.api.admin.dto.AdminUserDTO;
 import com.aucolher.api.admin.dto.UserStatusDTO;
+import com.aucolher.api.event.EventService;
+import com.aucolher.api.event.dto.EventResponseDTO;
+import com.aucolher.api.report.ReportService;
 import com.aucolher.api.report.dto.ReportDTO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -20,7 +24,36 @@ import java.util.List;
 @RequiredArgsConstructor
 public class AdminController {
 
+    private final AdminService adminService;
     private final ModerationService moderationService;
+    private final EventService eventService;
+    private final ReportService reportService;
+
+    // ===================== Listas =====================
+
+    /** Contas de pessoas e ONGs (sem outros admins), mais recentes primeiro. */
+    @GetMapping("/users")
+    public ResponseEntity<List<AdminUserDTO>> listUsers() {
+        return ResponseEntity.ok(adminService.listUsers());
+    }
+
+    /** Todos os anúncios, em qualquer status, com `listingStatus` e `owner.active`. */
+    @GetMapping("/animals")
+    public ResponseEntity<List<AdminAnimalDTO>> listAnimals() {
+        return ResponseEntity.ok(adminService.listAnimals());
+    }
+
+    /** Todos os eventos, da data mais distante para a mais antiga, com `ngo.active` e `removedByModeration`. */
+    @GetMapping("/events")
+    public ResponseEntity<List<EventResponseDTO>> listEvents() {
+        return ResponseEntity.ok(eventService.listForAdmin());
+    }
+
+    /** Todas as denúncias, em qualquer situação, com quem denunciou. */
+    @GetMapping("/reports")
+    public ResponseEntity<List<ReportDTO>> listReports() {
+        return ResponseEntity.ok(reportService.listAllForAdmin());
+    }
 
     // ===================== Moderação =====================
 
