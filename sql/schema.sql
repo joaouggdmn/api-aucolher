@@ -267,7 +267,9 @@ COMMENT ON COLUMN match_profiles.preferred_size   IS 'Porte preferido; se estive
 -- dono do animal (animals.owner_id).
 -- Fluxo: PENDING → ACCEPTED → AWAITING_DELIVERY → CONCLUDED, ou
 -- REJECTED pelo dono, ou CANCELLED (por uma das partes ou pelo
--- sistema, com o motivo em cancel_reason).
+-- sistema, com o motivo em cancel_reason). Depois de CONCLUDED, o
+-- animal pode voltar ao doador (RETURNED) ou ser republicado pelo
+-- adotante (REHOMED) — os dois contam na taxa de reabandono.
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS adoption_requests (
     id                     BIGSERIAL    PRIMARY KEY,
@@ -281,14 +283,31 @@ CREATE TABLE IF NOT EXISTS adoption_requests (
     concluded_at           TIMESTAMP,
     closed_at              TIMESTAMP,
 
+    -- Retorno ao doador (RETURNED) ou repasse pelo adotante (REHOMED)
+    match_score_at_adoption SMALLINT,
+    return_date            DATE,
+    return_reason          VARCHAR(30),
+    return_note            VARCHAR(500),
+    return_recorded_at     TIMESTAMP,
+
     CONSTRAINT chk_adoption_requests_status         CHECK (status IN ('PENDING', 'ACCEPTED', 'AWAITING_DELIVERY',
-                                                                      'CONCLUDED', 'REJECTED', 'CANCELLED')),
+                                                                      'CONCLUDED', 'REJECTED', 'CANCELLED',
+                                                                      'RETURNED', 'REHOMED')),
     CONSTRAINT chk_adoption_requests_cancel_reason  CHECK (cancel_reason IN ('ADOPTER_WITHDREW', 'OWNER_WITHDREW',
                                                                              'ANIMAL_ADOPTED', 'ANIMAL_UNAVAILABLE')),
     CONSTRAINT chk_adoption_requests_cancelled      CHECK ((status = 'CANCELLED') = (cancel_reason IS NOT NULL)),
     CONSTRAINT chk_adoption_requests_cancelled_from CHECK (cancelled_from_status IS NULL
                                                         OR cancelled_from_status IN ('PENDING', 'ACCEPTED', 'AWAITING_DELIVERY')),
-    CONSTRAINT chk_adoption_requests_concluded      CHECK ((status = 'CONCLUDED') = (concluded_at IS NOT NULL))
+    CONSTRAINT chk_adoption_requests_concluded      CHECK ((status IN ('CONCLUDED', 'RETURNED', 'REHOMED')) = (concluded_at IS NOT NULL)),
+    CONSTRAINT chk_adoption_requests_score          CHECK (match_score_at_adoption IS NULL OR match_score_at_adoption BETWEEN 0 AND 100),
+    CONSTRAINT chk_adoption_requests_return_reason  CHECK (return_reason IS NULL OR return_reason IN
+                                                        ('BEHAVIOR', 'OTHER_PETS', 'CHILDREN', 'HOUSING_OR_ROUTINE',
+                                                         'COSTS', 'ANIMAL_HEALTH', 'OTHER')),
+    CONSTRAINT chk_adoption_requests_returned       CHECK ((status IN ('RETURNED', 'REHOMED')) =
+                                                        (return_date IS NOT NULL AND return_reason IS NOT NULL
+                                                         AND return_recorded_at IS NOT NULL)),
+    CONSTRAINT chk_adoption_requests_return_note    CHECK (return_reason IS DISTINCT FROM 'OTHER'
+                                                        OR (return_note IS NOT NULL AND char_length(btrim(return_note)) > 0))
 );
 
 -- Um pedido "vivo" por pessoa e animal: recusado é definitivo, e só um
@@ -297,12 +316,29 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_adoption_requests_open ON adoption_requests
     WHERE status <> 'CANCELLED';
 CREATE INDEX IF NOT EXISTS idx_adoption_requests_animal  ON adoption_requests (animal_id, status);
 CREATE INDEX IF NOT EXISTS idx_adoption_requests_adopter ON adoption_requests (adopter_id, created_at DESC);
+-- Taxa de reabandono no painel do admin
+CREATE INDEX IF NOT EXISTS idx_adoption_requests_outcome ON adoption_requests (status)
+    WHERE status IN ('CONCLUDED', 'RETURNED', 'REHOMED');
 
 COMMENT ON TABLE  adoption_requests                       IS 'Pedidos de adoção: quem quer adotar (adopter_id) pede um animal ao dono dele';
-COMMENT ON COLUMN adoption_requests.status                IS 'PENDING, ACCEPTED, AWAITING_DELIVERY, CONCLUDED, REJECTED ou CANCELLED';
+COMMENT ON COLUMN adoption_requests.status                IS 'PENDING, ACCEPTED, AWAITING_DELIVERY, CONCLUDED, REJECTED, CANCELLED, RETURNED (voltou ao doador) ou REHOMED (republicado pelo adotante)';
 COMMENT ON COLUMN adoption_requests.cancel_reason         IS 'Só em CANCELLED: ADOPTER_WITHDREW, OWNER_WITHDREW, ANIMAL_ADOPTED (outro pedido concluiu) ou ANIMAL_UNAVAILABLE (o dono tirou o animal do ar)';
 COMMENT ON COLUMN adoption_requests.cancelled_from_status IS 'Status em que o pedido estava quando foi cancelado';
 COMMENT ON COLUMN adoption_requests.closed_at             IS 'Quando o pedido foi recusado ou cancelado';
+COMMENT ON COLUMN adoption_requests.match_score_at_adoption IS 'Score do AUmatch congelado na conclusão (nulo sem quiz completo) — base das faixas da taxa de reabandono';
+COMMENT ON COLUMN adoption_requests.return_date             IS 'RETURNED: data em que o animal voltou ao doador; REHOMED: data da republicação';
+COMMENT ON COLUMN adoption_requests.return_reason           IS 'Motivo do retorno ou do repasse';
+COMMENT ON COLUMN adoption_requests.return_note             IS 'Observação do retorno ou do repasse (obrigatória no motivo OTHER)';
+COMMENT ON COLUMN adoption_requests.return_recorded_at      IS 'Quando o retorno ou o repasse foi registrado (ou corrigido)';
+
+-- O anúncio republicado pelo adotante aponta para a adoção de onde veio.
+-- Fica aqui, e não no CREATE TABLE animals, porque precisa de adoption_requests.
+ALTER TABLE animals ADD COLUMN IF NOT EXISTS origin_request_id BIGINT
+    REFERENCES adoption_requests (id) ON DELETE SET NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_animals_origin_request ON animals (origin_request_id)
+    WHERE origin_request_id IS NOT NULL;
+
+COMMENT ON COLUMN animals.origin_request_id IS 'Anúncio republicado pelo adotante: o pedido de adoção de onde ele veio (nulo nos demais)';
 
 -- ------------------------------------------------------------
 -- adoption_reviews — avaliações depois de uma adoção concluída.

@@ -136,6 +136,16 @@ psql -U postgres -h localhost -d aucolher_db -f sql/migrations/006_events.sql
 
 Só cria tabelas novas e pode ser repetida.
 
+#### Retorno, repasse e score congelado (migração 012)
+
+A 012 prepara a **taxa de reabandono**: um pedido `CONCLUDED` pode virar `RETURNED` (o animal voltou para quem doou) ou `REHOMED` (o adotante republicou o animal). Ela acrescenta em `adoption_requests` o score do AUmatch congelado na conclusão (`match_score_at_adoption`) e os dados do retorno (`return_date`, `return_reason`, `return_note`, `return_recorded_at`), e em `animals` o `origin_request_id` do anúncio republicado. Sem ela a API não sobe (`Schema-validation: missing column [match_score_at_adoption]`):
+
+```bash
+psql -U postgres -h localhost -d aucolher_db -f sql/migrations/012_adoption_returns.sql
+```
+
+Nenhum dado existente muda: os pedidos já concluídos ficam com o score nulo (entram na taxa geral, fora das faixas). Pode ser repetida.
+
 #### Sem e-mail institucional (migração 015)
 
 A 015 apaga a coluna `users.institutional_email`: o contato público da ONG passa a ser o próprio e-mail de login. (As migrações 007 a 014 estão reservadas para as próximas sprints.) A API sobe com ou sem ela, porque o `validate` não reclama de coluna sobrando, mas rode para o banco ficar igual ao `schema.sql`:
@@ -495,13 +505,45 @@ O dono pode aceitar vários pedidos do mesmo animal; vale o primeiro que conclui
   "adopter": { "id": 4, "name": "Maria", "photoUrl": null, "userType": "PERSON", "city": "Criciúma", "state": "SC",
                "matchProfile": { "housing": "APARTMENT", "...": "...", "complete": true } },
   "matchScore": 85,
+  "matchScoreAtAdoption": null,
+  "return": null,
   "reviews": { "adopter": null, "owner": null }
 }
 ```
 
 - `animal` é o card da listagem (`AnimalSummaryDTO`), com o dono em `animal.owner`.
 - `adopter.matchProfile` traz as respostas do quiz do AUmatch (nulo para ONG ou para quem não respondeu); `matchScore` é a compatibilidade atual entre elas e o animal, calculada pelo `MatchScoreCalculator`.
+- `matchScoreAtAdoption` é o score **congelado** quando o pedido vira `CONCLUDED`: não muda se o quiz ou o animal mudarem depois. É nulo sem o quiz completo (as 7 respostas), para ONG adotando e nos pedidos concluídos antes da migração 012.
+- `return` traz o retorno ou o repasse (abaixo); é nulo fora de `RETURNED` e `REHOMED`.
 - `reviews` traz as avaliações das duas partes (ver abaixo).
+
+### Retorno e repasse (taxa de reabandono)
+
+Uma adoção `CONCLUDED` pode não dar certo por dois caminhos, que contam igual na taxa de reabandono do painel do admin. Vale o primeiro: depois do retorno o adotante não republica, e depois do repasse o doador não registra retorno. **Adoção feita por ONG fica fora de tudo** (é resgate, não adoção final): as rotas respondem 400 "Adoções feitas por ONG não têm retorno nem repasse".
+
+| Método e rota | Quem | O que faz |
+|---|---|---|
+| `POST /api/adoption-requests/{id}/return` | dono do animal | `{ "returnDate": "2026-11-03", "reason": "OTHER_PETS", "note": "..." }` — o pedido vira `RETURNED` e o anúncio volta para o doador fora do ar (`ADOPTED → INACTIVE`, a única saída de `ADOPTED`). Repetir num pedido já `RETURNED` corrige os dados sem mexer no animal |
+| `GET /api/adoption-requests/{id}/rehome-draft` | adotante | O anúncio original no formato do cadastro (`AnimalRequestDTO`, fotos incluídas), para o formulário de "Republicar anúncio" abrir preenchido. Só em `CONCLUDED` |
+| `POST /api/adoption-requests/{id}/rehome` | adotante | `{ "reason": "HOUSING_OR_ROUTINE", "note": "...", "animal": { ...cadastro } }` — numa transação, nasce o anúncio novo (`AVAILABLE`, em nome do adotante, com `originRequestId` = este pedido) e o pedido vira `REHOMED`. O `animal` passa pelas mesmas validações do `POST /api/animals`. O anúncio original continua `ADOPTED` |
+| `POST /api/adoption-requests/{id}/rehome/undo` | adotante | "Desisti de doar": enquanto o anúncio novo não foi adotado, ele sai do ar (os pedidos ativos dele são cancelados com `ANIMAL_UNAVAILABLE`) e perde o vínculo, e o pedido volta a `CONCLUDED`. Tirar do ar ou excluir o anúncio novo **não** desfaz o repasse |
+
+- `reason`: `BEHAVIOR`, `OTHER_PETS`, `CHILDREN`, `HOUSING_OR_ROUTINE`, `COSTS`, `ANIMAL_HEALTH` ou `OTHER` (que exige `note`). `note` tem até 500 caracteres.
+- A data não pode ser futura nem anterior à conclusão.
+- O `PATCH .../status` não aceita `RETURNED` nem `REHOMED`: cada um tem a sua ação.
+
+```json
+"return": {
+  "type": "RETURNED",
+  "date": "2026-11-03",
+  "reason": "OTHER_PETS",
+  "note": "Não se adaptou com os dois gatos da casa.",
+  "recordedAt": "2026-11-03T18:20:00",
+  "rehomedAnimalId": null
+}
+```
+
+`type` repete o status; em `REHOMED`, `date` é o dia da republicação e `rehomedAnimalId` é o anúncio novo. Os cards de animal (`AnimalSummaryDTO` e `AnimalDetailDTO`) trazem `originRequestId`: nulo, ou o pedido de onde veio um anúncio republicado.
 
 ### Avaliações
 
@@ -509,7 +551,7 @@ Depois que o pedido é concluído, cada parte pode avaliar a outra uma vez: o ad
 
 | Método e rota | Login | O que faz |
 |---|---|---|
-| `PUT /api/adoption-requests/{id}/review` | parte do pedido | `{ "rating": 5, "comment": "..." }` — cria ou edita a minha avaliação e responde com o pedido. Só em `CONCLUDED` |
+| `PUT /api/adoption-requests/{id}/review` | parte do pedido | `{ "rating": 5, "comment": "..." }` — cria ou edita a minha avaliação e responde com o pedido. Só depois da adoção (`CONCLUDED`, `RETURNED` ou `REHOMED`) |
 | `DELETE /api/adoption-requests/{id}/review` | parte do pedido | Apaga a minha avaliação — responde 204 |
 | `GET /api/users/{id}/reviews` | não | Resumo público de um perfil |
 
@@ -529,7 +571,7 @@ Depois que o pedido é concluído, cada parte pode avaliar a outra uma vez: o ad
 }
 ```
 
-`adoptionsCount` conta as adoções concluídas em que a conta participou, como dona do animal ou como adotante.
+`adoptionsCount` conta as adoções que aconteceram (`CONCLUDED`, `RETURNED` ou `REHOMED`) em que a conta participou, como dona do animal ou como adotante.
 
 ### Admin: pedidos
 

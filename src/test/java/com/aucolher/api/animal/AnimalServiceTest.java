@@ -134,6 +134,78 @@ class AnimalServiceTest {
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 
+    // ===================== Retorno e repasse =====================
+
+    @Test
+    void returningAnAdoptionTakesTheListingOffline() {
+        Animal adopted = animal(AnimalStatus.ADOPTED);
+
+        animalService.returnToOwner(adopted);
+
+        assertThat(adopted.getStatus()).isEqualTo(AnimalStatus.INACTIVE);
+        verifyNoInteractions(eventPublisher);
+    }
+
+    @Test
+    void rehomeDraftCopiesTheListingWithItsPhotos() {
+        Animal original = animal(AnimalStatus.ADOPTED);
+        original.setName("Thor");
+        original.setStory("Resgatado na estrada.");
+
+        AnimalRequestDTO draft = animalService.toRehomeDraft(original);
+
+        assertThat(draft.name()).isEqualTo("Thor");
+        assertThat(draft.story()).isEqualTo("Resgatado na estrada.");
+        assertThat(draft.photos()).containsExactly("https://fotos/1.jpg");
+    }
+
+    @Test
+    void rehomedListingBelongsToTheAdopterAndPointsToTheRequest() {
+        User adopter = user(5L, OTHER_EMAIL);
+        when(animalRepository.saveAndFlush(any(Animal.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Animal listing = animalService.createRehomed(adopter, validRequest(), 50L);
+
+        assertThat(listing.getOwner()).isSameAs(adopter);
+        assertThat(listing.getOriginRequestId()).isEqualTo(50L);
+        assertThat(listing.getStatus()).isEqualTo(AnimalStatus.AVAILABLE);
+        assertThat(listing.getPhotos()).containsExactly("https://fotos/1.jpg", "https://fotos/2.jpg");
+    }
+
+    @Test
+    void rehomingRequiresTheAdopterCityAndState() {
+        User adopter = user(5L, OTHER_EMAIL);
+        adopter.setState(null);
+
+        assertThatThrownBy(() -> animalService.createRehomed(adopter, validRequest(), 50L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("cidade e a UF");
+    }
+
+    @Test
+    void withdrawingARehomedListingTakesItOfflineAndUnlinksIt() {
+        Animal listing = animal(AnimalStatus.AVAILABLE);
+        listing.setOriginRequestId(50L);
+
+        animalService.withdrawRehomed(listing);
+
+        assertThat(listing.getStatus()).isEqualTo(AnimalStatus.INACTIVE);
+        assertThat(listing.getOriginRequestId()).isNull();
+        verify(eventPublisher).publishEvent(new AnimalLeftListingEvent(10L));
+    }
+
+    @Test
+    void withdrawingAnOfflineRehomedListingOnlyUnlinksIt() {
+        Animal listing = animal(AnimalStatus.INACTIVE);
+        listing.setOriginRequestId(50L);
+
+        animalService.withdrawRehomed(listing);
+
+        assertThat(listing.getStatus()).isEqualTo(AnimalStatus.INACTIVE);
+        assertThat(listing.getOriginRequestId()).isNull();
+        verifyNoInteractions(eventPublisher);
+    }
+
     // ===================== Dados de teste =====================
 
     private static User user(Long id, String email) {

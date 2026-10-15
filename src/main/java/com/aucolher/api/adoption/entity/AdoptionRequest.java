@@ -6,7 +6,10 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
@@ -62,6 +65,30 @@ public class AdoptionRequest {
     @Column(name = "closed_at")
     private LocalDateTime closedAt;
 
+    /**
+     * Score do AUmatch congelado na conclusão: nulo sem o quiz completo, para
+     * ONG adotando e nos pedidos concluídos antes da migração 012.
+     */
+    @Column(name = "match_score_at_adoption")
+    @JdbcTypeCode(SqlTypes.SMALLINT) // a coluna é SMALLINT (0 a 100)
+    private Integer matchScoreAtAdoption;
+
+    // ===================== Retorno (RETURNED) ou repasse (REHOMED) =====================
+
+    /** RETURNED: quando o animal voltou ao doador; REHOMED: quando o adotante republicou. */
+    @Column(name = "return_date")
+    private LocalDate returnDate;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "return_reason", length = 30)
+    private ReturnReason returnReason;
+
+    @Column(name = "return_note", length = 500)
+    private String returnNote;
+
+    @Column(name = "return_recorded_at")
+    private LocalDateTime returnRecordedAt;
+
     public AdoptionRequest(Animal animal, User adopter) {
         this.animal = animal;
         this.adopter = adopter;
@@ -102,9 +129,39 @@ public class AdoptionRequest {
         closedAt = LocalDateTime.now();
     }
 
-    public void conclude() {
+    /** @param frozenScore o score do AUmatch neste momento, ou null sem quiz completo */
+    public void conclude(Integer frozenScore) {
         status = AdoptionStatus.CONCLUDED;
         concludedAt = LocalDateTime.now();
+        matchScoreAtAdoption = frozenScore;
+    }
+
+    /** O animal voltou para quem doou. Repetir num pedido já RETURNED corrige os dados. */
+    public void recordReturn(LocalDate date, ReturnReason reason, String note) {
+        status = AdoptionStatus.RETURNED;
+        fillReturn(date, reason, note);
+    }
+
+    /** O adotante anunciou o animal para uma nova adoção. */
+    public void rehome(ReturnReason reason, String note) {
+        status = AdoptionStatus.REHOMED;
+        fillReturn(LocalDate.now(), reason, note);
+    }
+
+    /** "Desisti de doar": a adoção volta a valer, sem rastro do repasse. */
+    public void undoRehome() {
+        status = AdoptionStatus.CONCLUDED;
+        returnDate = null;
+        returnReason = null;
+        returnNote = null;
+        returnRecordedAt = null;
+    }
+
+    private void fillReturn(LocalDate date, ReturnReason reason, String note) {
+        returnDate = date;
+        returnReason = reason;
+        returnNote = note;
+        returnRecordedAt = LocalDateTime.now();
     }
 
     /** Guarda de onde o pedido saiu: a tela mostra, por exemplo, "cancelado durante a entrega". */
