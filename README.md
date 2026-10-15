@@ -59,6 +59,12 @@ src/main/java/com/aucolher/api/
 │   ├── AdoptionReviewRepository.java
 │   ├── entity/                             # AdoptionRequest, AdoptionReview + enums (AdoptionStatus, CancelReason, ReviewRole)
 │   └── dto/                                # AdoptionRequestDTO, AdopterDTO, ReviewDTO, UserReviewsDTO...
+├── report/                                 # Denúncias de anúncios e perfis
+│   ├── ReportController.java               # POST /api/reports e /api/reports/mine
+│   ├── ReportService.java                  # Regras do envio, cópia do alvo e resolução dos casos
+│   ├── ReportRepository.java
+│   ├── entity/                             # Report + enums (ReportTargetType, ReportReason, ReportStatus, ReportResolution)
+│   └── dto/                                # NewReportDTO, ReportDTO (com reporter só para o admin), ReportTargetDTO
 ├── shared/                                 # Comum a todas as funcionalidades
 │   ├── dto/PageDTO.java                    # Formato padrão das respostas paginadas
 │   ├── exception/                          # Exceções (400, 401, 403, 404), @RestControllerAdvice e ErrorResponseDTO
@@ -582,6 +588,20 @@ Depois que o pedido é concluído, cada parte pode avaliar a outra uma vez: o ad
 ```
 
 `adoptionsCount` conta as adoções que aconteceram (`CONCLUDED`, `RETURNED` ou `REHOMED`) em que a conta participou, como dona do animal ou como adotante.
+
+### Denúncias
+
+Qualquer conta logada de pessoa ou ONG denuncia um anúncio de animal (`ANIMAL`) ou um perfil (`USER`). O admin não denuncia (403): ele modera direto pelo painel.
+
+| Método e rota | Quem | O que faz |
+|---|---|---|
+| `POST /api/reports` | pessoa ou ONG | `{ "targetType": "ANIMAL", "targetId": 8, "reason": "SCAM", "description": "..." }` — responde 201 com a denúncia (`PENDING`) |
+| `GET /api/reports/mine` | logado | As denúncias da própria conta, mais recentes primeiro |
+
+- `reason`: `FAKE_PROFILE` (só perfil), `SCAM`, `ANIMAL_ABUSE`, `IMPROPER_CONTENT`, `SPAM` ou `OTHER` (que exige `description`, até 500 caracteres).
+- Ninguém denuncia o próprio anúncio ou o próprio perfil (400). Alvo inexistente ou fora do site: 404.
+- **Uma denúncia em análise por pessoa e alvo:** a segunda responde **409**; depois de julgada, a pessoa pode denunciar de novo. O índice `uq_reports_pending` garante isso também com dois cliques ao mesmo tempo.
+- A denúncia guarda uma **cópia do alvo** (`target`): nome, foto, espécie e dono (anúncio) ou nome, foto, tipo, cidade e UF (perfil). O admin continua vendo o que foi denunciado depois de o anúncio sair do ar.
 
 ### Admin: pedidos
 
