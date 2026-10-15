@@ -12,6 +12,7 @@ import com.aucolher.api.shared.exception.BusinessException;
 import com.aucolher.api.shared.exception.ResourceNotFoundException;
 import com.aucolher.api.user.UserRepository;
 import com.aucolher.api.user.entity.User;
+import com.aucolher.api.user.entity.UserType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
@@ -64,12 +65,18 @@ public class AnimalService {
     @Transactional(readOnly = true)
     public AnimalDetailDTO getDetail(Long id, String viewerEmail) {
         Animal animal = findAnimal(id);
-
-        if (animal.getStatus() == AnimalStatus.INACTIVE && !animal.isOwnedBy(viewerEmail)) {
-            throw animalNotFound();
+        if (animal.isPubliclyVisible()) {
+            return AnimalDetailDTO.from(animal);
         }
 
-        return AnimalDetailDTO.from(animal);
+        // Fora do ar: só o próprio dono vê (removido pela moderação ou de dono
+        // banido, nem ele). O admin vê tudo, para moderar.
+        boolean ownerSeesOwnInactive = animal.getStatus() == AnimalStatus.INACTIVE
+                && animal.isOwnedBy(viewerEmail) && Boolean.TRUE.equals(animal.getOwner().getActive());
+        if (ownerSeesOwnInactive || isAdmin(viewerEmail)) {
+            return AnimalDetailDTO.from(animal);
+        }
+        throw animalNotFound();
     }
 
     /** Vitrine pública: só disponíveis, com filtros, do anúncio mais recente para o mais antigo. */
@@ -91,12 +98,12 @@ public class AnimalService {
         return summarize(animalRepository.findByOwnerEmailOrderByCreatedAtDesc(ownerEmail));
     }
 
-    /** Animais disponíveis de um perfil público. */
+    /** Animais disponíveis de um perfil público (conta banida não tem perfil público). */
     @Transactional(readOnly = true)
     public List<AnimalSummaryDTO> listByOwner(Long userId) {
-        if (!userRepository.existsById(userId)) {
-            throw new ResourceNotFoundException("Usuário não encontrado");
-        }
+        userRepository.findById(userId)
+                .filter(owner -> Boolean.TRUE.equals(owner.getActive()))
+                .orElseThrow(() -> new ResourceNotFoundException("Usuário não encontrado"));
         return summarize(animalRepository.findByOwnerIdAndStatusOrderByCreatedAtDesc(userId, AnimalStatus.AVAILABLE));
     }
 
@@ -127,7 +134,7 @@ public class AnimalService {
      */
     @Transactional
     public AnimalDetailDTO update(Long id, String ownerEmail, AnimalRequestDTO dto) {
-        Animal animal = findOwned(id, ownerEmail);
+        Animal animal = findEditable(id, ownerEmail);
 
         if (animal.getStatus() == AnimalStatus.ADOPTED) {
             throw new BusinessException("Um animal já adotado não pode mais ser editado");
@@ -144,7 +151,10 @@ public class AnimalService {
      */
     @Transactional
     public AnimalDetailDTO changeStatus(Long id, String ownerEmail, AnimalStatus newStatus) {
-        Animal animal = findOwned(id, ownerEmail);
+        Animal animal = findEditable(id, ownerEmail);
+        if (newStatus == AnimalStatus.REMOVED) {
+            throw new BusinessException("Só a moderação remove um anúncio");
+        }
 
         if (animal.getStatus() == newStatus) {
             return AnimalDetailDTO.from(animal);
@@ -221,6 +231,27 @@ public class AnimalService {
         animalRepository.saveAndFlush(animal);
     }
 
+    /**
+     * Moderação: o admin remove o anúncio (REMOVED). Ele sai do site, os
+     * pedidos ativos são cancelados (LISTING_REMOVED) e o dono não muda mais
+     * nada nele. Não há desfazer. Adotado fica como histórico.
+     */
+    @Transactional
+    public Animal removeByModeration(Long id) {
+        Animal animal = animalRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Anúncio não encontrado."));
+        if (animal.getStatus() == AnimalStatus.REMOVED) {
+            throw new BusinessException("Este anúncio já foi removido.");
+        }
+        if (animal.getStatus() == AnimalStatus.ADOPTED) {
+            throw new BusinessException("Este animal já foi adotado: o anúncio fica só como histórico.");
+        }
+
+        animal.setStatus(AnimalStatus.REMOVED);
+        eventPublisher.publishEvent(new AnimalLeftListingEvent(animal.getId(), true));
+        return animalRepository.saveAndFlush(animal);
+    }
+
     /** "Excluir" o anúncio: exclusão lógica, o animal vira INACTIVE. */
     @Transactional
     public void deactivate(Long id, String ownerEmail) {
@@ -232,6 +263,21 @@ public class AnimalService {
         if (owner.getCity() == null || owner.getState() == null) {
             throw new BusinessException("Complete a cidade e a UF do seu perfil antes de anunciar um animal");
         }
+    }
+
+    /** Animal que o dono quer alterar: além de ser dele, não pode ter sido removido pela moderação. */
+    private Animal findEditable(Long id, String ownerEmail) {
+        Animal animal = findOwned(id, ownerEmail);
+        if (animal.getStatus() == AnimalStatus.REMOVED) {
+            throw new ForbiddenException("Este anúncio foi removido pela moderação e não pode mais ser alterado.");
+        }
+        return animal;
+    }
+
+    private boolean isAdmin(String email) {
+        return email != null && userRepository.findByEmail(email)
+                .map(user -> user.getUserType() == UserType.ADMIN)
+                .orElse(false);
     }
 
     /** Animal que o usuário logado quer alterar: precisa existir e ser dele. */

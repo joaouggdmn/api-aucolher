@@ -40,6 +40,9 @@ public interface AnimalRepository extends JpaRepository<Animal, Long>, JpaSpecif
     @EntityGraph(attributePaths = "owner")
     List<Animal> findByStatusAndOwnerActiveTrueAndOwnerIdNot(AnimalStatus status, Long ownerId);
 
+    /** Anúncios de uma conta, em qualquer status (painel do admin). */
+    long countByOwnerId(Long ownerId);
+
     /** O anúncio republicado a partir de um pedido de adoção (repasse). */
     Optional<Animal> findByOriginRequestId(Long requestId);
 

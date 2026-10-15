@@ -167,4 +167,12 @@ public class Animal {
     public boolean isOwnedBy(String email) {
         return email != null && email.equals(owner.getEmail());
     }
+
+    /**
+     * O anúncio aparece no site: não está fora do ar (INACTIVE) nem removido
+     * pela moderação (REMOVED), e o dono não foi banido.
+     */
+    public boolean isPubliclyVisible() {
+        return status != AnimalStatus.INACTIVE && status != AnimalStatus.REMOVED && Boolean.TRUE.equals(owner.getActive());
+    }
 }
