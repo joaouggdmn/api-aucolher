@@ -41,10 +41,10 @@ public interface AdoptionRequestRepository extends JpaRepository<AdoptionRequest
     @Query("SELECT r.animal.id FROM AdoptionRequest r WHERE r.adopter.id = :adopterId AND r.status <> :ignored")
     List<Long> findRequestedAnimalIds(Long adopterId, AdoptionStatus ignored);
 
-    /** Adoções num status em que a conta participou — como dona do animal ou como adotante. */
-    @Query("SELECT count(r) FROM AdoptionRequest r WHERE r.status = :status"
+    /** Pedidos nos status dados em que a conta participou — como dona do animal ou como adotante. */
+    @Query("SELECT count(r) FROM AdoptionRequest r WHERE r.status IN :statuses"
             + " AND (r.adopter.id = :userId OR r.animal.owner.id = :userId)")
-    long countByStatusInvolving(Long userId, AdoptionStatus status);
+    long countByStatusInvolving(Long userId, Collection<AdoptionStatus> statuses);
 
     /** Pedidos de um animal nos status dados — usado para cancelar os ativos. */
     List<AdoptionRequest> findByAnimalIdAndStatusIn(Long animalId, Collection<AdoptionStatus> statuses);

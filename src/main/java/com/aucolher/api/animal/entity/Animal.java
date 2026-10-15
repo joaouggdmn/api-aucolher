@@ -131,6 +131,14 @@ public class Animal {
     @Column(name = "url", nullable = false, columnDefinition = "TEXT")
     private List<String> photos = new ArrayList<>();
 
+    /**
+     * Anúncio republicado pelo adotante: o id do pedido de adoção de onde ele
+     * veio (nulo nos demais). Só o id, sem relação JPA, para o pacote animal
+     * não depender do pacote adoption.
+     */
+    @Column(name = "origin_request_id")
+    private Long originRequestId;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

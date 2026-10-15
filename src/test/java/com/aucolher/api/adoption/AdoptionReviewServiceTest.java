@@ -78,6 +78,17 @@ class AdoptionReviewServiceTest {
     }
 
     @Test
+    void returnedOrRehomedAdoptionsCanStillBeReviewed() {
+        givenRequest(AdoptionStatus.RETURNED);
+        when(reviewRepository.findByRequestIdAndAuthorRole(50L, ReviewRole.OWNER)).thenReturn(Optional.empty());
+        givenResponse();
+
+        reviewService.saveMine(50L, OWNER_EMAIL, new SaveReviewDTO(4, null));
+
+        verify(reviewRepository).saveAndFlush(any(AdoptionReview.class));
+    }
+
+    @Test
     void reviewsWaitForTheAdoptionToConclude() {
         givenRequest(AdoptionStatus.AWAITING_DELIVERY);
 
@@ -114,7 +125,7 @@ class AdoptionReviewServiceTest {
         when(reviewRepository.findAboutUser(2L, ReviewRole.ADOPTER, ReviewRole.OWNER))
                 .thenReturn(List.of(review(request, ReviewRole.ADOPTER, 5), review(request, ReviewRole.ADOPTER, 4),
                         review(request, ReviewRole.ADOPTER, 4)));
-        when(requestRepository.countByStatusInvolving(2L, AdoptionStatus.CONCLUDED)).thenReturn(2L);
+        when(requestRepository.countByStatusInvolving(2L, AdoptionStatus.HAPPENED)).thenReturn(2L);
 
         UserReviewsDTO summary = reviewService.summaryOf(2L);
 
@@ -146,7 +157,7 @@ class AdoptionReviewServiceTest {
     /** A resposta do PUT é o pedido montado pela AdoptionRequestService (simulada aqui). */
     private void givenResponse() {
         when(requestService.toDtos(anyList())).thenReturn(List.of(new AdoptionRequestDTO(
-                50L, AdoptionStatus.CONCLUDED, null, null, null, null, null, null, null, null, 0, RequestReviewsDTO.NONE)));
+                50L, AdoptionStatus.CONCLUDED, null, null, null, null, null, null, null, null, 0, null, null, RequestReviewsDTO.NONE)));
     }
 
     private static AdoptionReview review(AdoptionRequest request, ReviewRole role, int rating) {

@@ -46,10 +46,7 @@ public class AnimalService {
     public AnimalDetailDTO create(String ownerEmail, AnimalRequestDTO dto) {
         User owner = userRepository.findByEmail(ownerEmail)
                 .orElseThrow(() -> new BusinessException("Usuário não encontrado"));
-
-        if (owner.getCity() == null || owner.getState() == null) {
-            throw new BusinessException("Complete a cidade e a UF do seu perfil antes de anunciar um animal");
-        }
+        requireLocation(owner);
 
         Animal animal = new Animal();
         animal.setOwner(owner);
@@ -163,10 +160,78 @@ public class AnimalService {
         return saveAndRespond(animal);
     }
 
+    /**
+     * Retorno de uma adoção (uso interno, chamado pelo pedido): o anúncio volta
+     * para o doador fora do ar. É a única saída de ADOPTED — o PUT e o PATCH
+     * públicos continuam recusando animal adotado. Depois disso o doador edita
+     * e reativa o anúncio pelo caminho de sempre.
+     */
+    @Transactional
+    public void returnToOwner(Animal animal) {
+        if (animal.getStatus() == AnimalStatus.ADOPTED) {
+            animal.setStatus(AnimalStatus.INACTIVE);
+        }
+    }
+
+    // ===================== Repasse (o adotante republica o animal) =====================
+
+    /**
+     * O anúncio atual no formato do cadastro (fotos incluídas): o formulário
+     * de "Republicar anúncio" já abre preenchido com ele.
+     */
+    @Transactional(readOnly = true)
+    public AnimalRequestDTO toRehomeDraft(Animal animal) {
+        return new AnimalRequestDTO(
+                animal.getName(), animal.getSpecies(), animal.getBreed(), animal.getSex(),
+                animal.getAgeValue(), animal.getAgeUnit(), animal.getSize(),
+                animal.getVaccinated(), animal.getNeutered(), animal.getDewormed(), animal.getSpecialNeeds(),
+                animal.getEnergyLevel(), animal.getTemperament(), animal.getIndependenceLevel(), animal.getVocalization(),
+                animal.getGoodWithChildren(), animal.getGoodWithDogs(), animal.getGoodWithCats(), animal.getApartmentFriendly(),
+                animal.getSummary(), animal.getStory(),
+                List.copyOf(animal.getPhotos()));
+    }
+
+    /**
+     * O anúncio novo do repasse: AVAILABLE, em nome do adotante, apontando para
+     * o pedido de onde veio. Mesmas regras do cadastro (cidade e UF no perfil).
+     */
+    @Transactional
+    public Animal createRehomed(User adopter, AnimalRequestDTO dto, Long originRequestId) {
+        requireLocation(adopter);
+
+        Animal animal = new Animal();
+        animal.setOwner(adopter);
+        fill(animal, dto);
+        animal.setOriginRequestId(originRequestId);
+        return animalRepository.saveAndFlush(animal);
+    }
+
+    /**
+     * "Desisti de doar": o anúncio novo perde o vínculo com a adoção e, se
+     * estava no ar, sai como num "tirar do ar" (os pedidos ativos dele são
+     * cancelados). A Service do pedido já conferiu que ele não foi adotado.
+     */
+    @Transactional
+    public void withdrawRehomed(Animal animal) {
+        animal.setOriginRequestId(null);
+        if (animal.getStatus() == AnimalStatus.AVAILABLE) {
+            animal.setStatus(AnimalStatus.INACTIVE);
+            eventPublisher.publishEvent(new AnimalLeftListingEvent(animal.getId()));
+        }
+        animalRepository.saveAndFlush(animal);
+    }
+
     /** "Excluir" o anúncio: exclusão lógica, o animal vira INACTIVE. */
     @Transactional
     public void deactivate(Long id, String ownerEmail) {
         changeStatus(id, ownerEmail, AnimalStatus.INACTIVE);
+    }
+
+    /** A localização do animal sai do perfil de quem anuncia. */
+    private static void requireLocation(User owner) {
+        if (owner.getCity() == null || owner.getState() == null) {
+            throw new BusinessException("Complete a cidade e a UF do seu perfil antes de anunciar um animal");
+        }
     }
 
     /** Animal que o usuário logado quer alterar: precisa existir e ser dele. */
