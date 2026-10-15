@@ -39,7 +39,9 @@ public record AnimalSummaryDTO(
         String state,
         AnimalOwnerDTO owner,
         Long originRequestId,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        // Última edição feita pelo admin (nula se nunca houve)
+        LocalDateTime moderatedAt
 ) {
 
     public static AnimalSummaryDTO from(Animal animal, String coverPhoto) {
@@ -71,7 +73,8 @@ public record AnimalSummaryDTO(
                 animal.getOwner().getState(),
                 AnimalOwnerDTO.from(animal.getOwner()),
                 animal.getOriginRequestId(),
-                animal.getCreatedAt()
+                animal.getCreatedAt(),
+                animal.getModeratedAt()
         );
     }
 }

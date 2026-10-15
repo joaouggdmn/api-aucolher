@@ -239,6 +239,23 @@ public class AnimalService {
     }
 
     /**
+     * Moderação: o admin edita o anúncio de outra pessoa. O anúncio continua
+     * em nome do dono (que vê "Editado pela moderação"); vale também para o
+     * adotado e o fora do ar, que seguem aparecendo para alguém. O removido
+     * não muda mais.
+     */
+    @Transactional
+    public AnimalDetailDTO updateByModeration(Long id, AnimalRequestDTO dto, Long adminId) {
+        Animal animal = findAnimal(id);
+        if (animal.getStatus() == AnimalStatus.REMOVED) {
+            throw new BusinessException("Este anúncio foi removido pela moderação e não pode mais ser alterado.");
+        }
+        fill(animal, dto);
+        animal.markModeratedBy(adminId);
+        return saveAndRespond(animal);
+    }
+
+    /**
      * Moderação: o admin remove o anúncio (REMOVED). Ele sai do site, os
      * pedidos ativos são cancelados (LISTING_REMOVED) e o dono não muda mais
      * nada nele. Não há desfazer. Adotado fica como histórico.

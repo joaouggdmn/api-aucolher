@@ -21,7 +21,8 @@ public record AdminUserDTO(
         @JsonProperty("isVerified") boolean verified,
         boolean active,
         LocalDateTime createdAt,
-        long animalsCount
+        long animalsCount,
+        LocalDateTime moderatedAt
 ) {
 
     public static AdminUserDTO from(User user, long animalsCount) {
@@ -36,6 +37,7 @@ public record AdminUserDTO(
                 Boolean.TRUE.equals(user.getVerified()),
                 Boolean.TRUE.equals(user.getActive()),
                 user.getCreatedAt(),
-                animalsCount);
+                animalsCount,
+                user.getModeratedAt());
     }
 }
