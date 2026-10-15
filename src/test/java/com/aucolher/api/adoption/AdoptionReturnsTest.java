@@ -2,6 +2,7 @@ package com.aucolher.api.adoption;
 
 import com.aucolher.api.adoption.dto.AdoptionRequestDTO;
 import com.aucolher.api.adoption.dto.RegisterReturnDTO;
+import com.aucolher.api.adoption.dto.RehomeDTO;
 import com.aucolher.api.adoption.entity.AdoptionRequest;
 import com.aucolher.api.adoption.entity.AdoptionStatus;
 import com.aucolher.api.adoption.entity.ReturnReason;
@@ -202,7 +203,156 @@ class AdoptionReturnsTest {
         verify(animalService, never()).returnToOwner(any());
     }
 
+    // ===================== Republicar anúncio =====================
+
+    @Test
+    void draftIsTheOriginalListingForTheAdopter() {
+        givenConcluded(adopter());
+
+        requestService.getRehomeDraft(50L, ADOPTER_EMAIL);
+
+        verify(animalService).toRehomeDraft(animal);
+    }
+
+    @Test
+    void adopterRehomesTheAnimal() {
+        AdoptionRequest request = givenConcluded(adopter());
+        when(animalRepository.findRehomedListings(List.of(50L))).thenReturn(List.of(rehomedListing(50L, 99L)));
+
+        AdoptionRequestDTO rehomed = requestService.rehome(50L, ADOPTER_EMAIL, rehomeBody(ReturnReason.HOUSING_OR_ROUTINE, "Vou me mudar."));
+
+        assertThat(rehomed.status()).isEqualTo(AdoptionStatus.REHOMED);
+        assertThat(rehomed.returnInfo().date()).isEqualTo(LocalDate.now());
+        assertThat(rehomed.returnInfo().reason()).isEqualTo(ReturnReason.HOUSING_OR_ROUTINE);
+        assertThat(rehomed.returnInfo().rehomedAnimalId()).isEqualTo(99L);
+        verify(animalService).createRehomed(request.getAdopter(), null, 50L);
+        verify(entityManager).refresh(request, LockModeType.PESSIMISTIC_WRITE);
+        assertThat(animal.getStatus()).isEqualTo(AnimalStatus.ADOPTED);
+    }
+
+    @Test
+    void onlyTheAdopterRehomes() {
+        givenConcluded(adopter());
+
+        assertThatThrownBy(() -> requestService.rehome(50L, OWNER_EMAIL, rehomeBody(ReturnReason.COSTS, null)))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessage("Só quem adotou pode republicar o animal");
+        assertThatThrownBy(() -> requestService.getRehomeDraft(50L, OWNER_EMAIL))
+                .isInstanceOf(ForbiddenException.class);
+    }
+
+    @Test
+    void ngoAdoptionsHaveNoRehome() {
+        givenConcluded(ngoAdopter());
+
+        assertThatThrownBy(() -> requestService.rehome(50L, NGO_ADOPTER_EMAIL, rehomeBody(ReturnReason.COSTS, null)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Adoções feitas por ONG não têm retorno nem repasse");
+        assertThatThrownBy(() -> requestService.getRehomeDraft(50L, NGO_ADOPTER_EMAIL))
+                .hasMessage("Adoções feitas por ONG não têm retorno nem repasse");
+        assertThatThrownBy(() -> requestService.undoRehome(50L, NGO_ADOPTER_EMAIL))
+                .hasMessage("Adoções feitas por ONG não têm retorno nem repasse");
+    }
+
+    @Test
+    void aReturnedAnimalCannotBeRehomed() {
+        AdoptionRequest request = givenConcluded(adopter());
+        request.recordReturn(LocalDate.now(), ReturnReason.BEHAVIOR, null);
+
+        assertThatThrownBy(() -> requestService.rehome(50L, ADOPTER_EMAIL, rehomeBody(ReturnReason.COSTS, null)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Este animal já voltou para quem doou");
+        assertThatThrownBy(() -> requestService.getRehomeDraft(50L, ADOPTER_EMAIL))
+                .hasMessage("Este animal já voltou para quem doou");
+    }
+
+    @Test
+    void onlyAConcludedAdoptionCanBeRehomed() {
+        givenRequest(AdoptionStatus.AWAITING_DELIVERY, adopter());
+
+        assertThatThrownBy(() -> requestService.rehome(50L, ADOPTER_EMAIL, rehomeBody(ReturnReason.COSTS, null)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Só uma adoção concluída pode ser republicada");
+    }
+
+    @Test
+    void rehomeNeedsAReason() {
+        givenConcluded(adopter());
+
+        assertThatThrownBy(() -> requestService.rehome(50L, ADOPTER_EMAIL, rehomeBody(null, null)))
+                .hasMessage("Escolha o motivo");
+        assertThatThrownBy(() -> requestService.rehome(50L, ADOPTER_EMAIL, rehomeBody(ReturnReason.OTHER, null)))
+                .hasMessage("Descreva o motivo");
+        verify(animalService, never()).createRehomed(any(), any(), any());
+    }
+
+    // ===================== Desisti de doar =====================
+
+    @Test
+    void undoingBeforeANewAdoptionRestoresTheConcludedAdoption() {
+        AdoptionRequest request = givenRehomed();
+        Animal listing = rehomedAnimal(AnimalStatus.AVAILABLE);
+        when(animalRepository.findByOriginRequestId(50L)).thenReturn(Optional.of(listing));
+
+        AdoptionRequestDTO undone = requestService.undoRehome(50L, ADOPTER_EMAIL);
+
+        assertThat(undone.status()).isEqualTo(AdoptionStatus.CONCLUDED);
+        assertThat(undone.returnInfo()).isNull();
+        assertThat(request.getReturnReason()).isNull();
+        assertThat(request.getReturnRecordedAt()).isNull();
+        verify(entityManager).refresh(listing, LockModeType.PESSIMISTIC_WRITE);
+        verify(animalService).withdrawRehomed(listing);
+    }
+
+    @Test
+    void undoingAfterTheNewListingWasAdoptedFails() {
+        AdoptionRequest request = givenRehomed();
+        when(animalRepository.findByOriginRequestId(50L)).thenReturn(Optional.of(rehomedAnimal(AnimalStatus.ADOPTED)));
+
+        assertThatThrownBy(() -> requestService.undoRehome(50L, ADOPTER_EMAIL))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("O anúncio já gerou uma nova adoção: não dá para desfazer");
+        assertThat(request.getStatus()).isEqualTo(AdoptionStatus.REHOMED);
+        verify(animalService, never()).withdrawRehomed(any());
+    }
+
+    @Test
+    void onlyARehomedAdoptionCanBeUndone() {
+        givenConcluded(adopter());
+
+        assertThatThrownBy(() -> requestService.undoRehome(50L, ADOPTER_EMAIL))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Esta adoção não foi republicada");
+    }
+
     // ===================== Fixtures =====================
+
+    /** O anúncio novo é validado na camada HTTP (@Valid); aqui a AnimalService é simulada. */
+    private static RehomeDTO rehomeBody(ReturnReason reason, String note) {
+        return new RehomeDTO(reason, note, null);
+    }
+
+    private AdoptionRequest givenRehomed() {
+        AdoptionRequest request = givenConcluded(adopter());
+        request.rehome(ReturnReason.COSTS, null);
+        return request;
+    }
+
+    private static Animal rehomedAnimal(AnimalStatus status) {
+        Animal listing = new Animal();
+        listing.setId(99L);
+        listing.setOwner(adopter());
+        listing.setOriginRequestId(50L);
+        listing.setStatus(status);
+        return listing;
+    }
+
+    private static AnimalRepository.RehomedListing rehomedListing(Long requestId, Long animalId) {
+        return new AnimalRepository.RehomedListing() {
+            public Long getRequestId() { return requestId; }
+            public Long getAnimalId() { return animalId; }
+        };
+    }
 
     private void assertReturnFails(RegisterReturnDTO body, String message) {
         assertThatThrownBy(() -> requestService.registerReturn(50L, OWNER_EMAIL, body))

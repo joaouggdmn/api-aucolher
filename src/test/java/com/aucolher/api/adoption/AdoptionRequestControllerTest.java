@@ -136,4 +136,27 @@ class AdoptionRequestControllerTest {
                 body.returnDate().toString().equals("2026-10-01") && body.reason() == ReturnReason.OTHER
                         && body.note().equals("Mudou de casa")));
     }
+
+    @Test
+    @WithMockUser(username = "person@email.com", roles = "PERSON")
+    void rehomeValidatesTheNewListingLikeTheRegistration() throws Exception {
+        mockMvc.perform(post("/api/adoption-requests/50/rehome").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"COSTS\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.animal").exists());
+        mockMvc.perform(post("/api/adoption-requests/50/rehome").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"COSTS\",\"animal\":{\"name\":\"\"}}"))
+                .andExpect(status().isBadRequest());
+        verify(requestService, never()).rehome(anyLong(), any(), any());
+    }
+
+    @Test
+    @WithMockUser(username = "person@email.com", roles = "PERSON")
+    void adopterGetsTheDraftAndUndoesTheRehome() throws Exception {
+        mockMvc.perform(get("/api/adoption-requests/50/rehome-draft")).andExpect(status().isOk());
+        verify(requestService).getRehomeDraft(50L, "person@email.com");
+
+        mockMvc.perform(post("/api/adoption-requests/50/rehome/undo")).andExpect(status().isOk());
+        verify(requestService).undoRehome(50L, "person@email.com");
+    }
 }

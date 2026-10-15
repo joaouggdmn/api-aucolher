@@ -38,6 +38,7 @@ public record AnimalSummaryDTO(
         String city,
         String state,
         AnimalOwnerDTO owner,
+        Long originRequestId,
         LocalDateTime createdAt
 ) {
 
@@ -69,6 +70,7 @@ public record AnimalSummaryDTO(
                 animal.getOwner().getCity(),
                 animal.getOwner().getState(),
                 AnimalOwnerDTO.from(animal.getOwner()),
+                animal.getOriginRequestId(),
                 animal.getCreatedAt()
         );
     }
