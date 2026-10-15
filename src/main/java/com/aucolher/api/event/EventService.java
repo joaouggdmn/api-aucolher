@@ -153,6 +153,7 @@ public class EventService {
     @Transactional
     public EventResponseDTO confirmAttendance(Long id, Authentication auth) {
         User user = currentUser(auth);
+        requireNotAdmin(user);
         Event event = lockExisting(id);               // trava a linha: vagas sem corrida
         requireActiveNgo(event);
         checkAttendanceRules(event, user);
@@ -170,6 +171,7 @@ public class EventService {
     @Transactional
     public EventResponseDTO cancelAttendance(Long id, Authentication auth) {
         User user = currentUser(auth);
+        requireNotAdmin(user);
         Event event = lockExisting(id);
         requireActiveNgo(event);
         checkAttendanceRules(event, user);
@@ -269,6 +271,13 @@ public class EventService {
     private void requireNgo(User user, String message) {
         if (!isNgo(user)) {
             throw new ForbiddenException(message);
+        }
+    }
+
+    /** O admin modera o site, mas não participa dele. */
+    private void requireNotAdmin(User user) {
+        if (user.getUserType() == UserType.ADMIN) {
+            throw new ForbiddenException("Contas de admin não confirmam presença em eventos.");
         }
     }
 

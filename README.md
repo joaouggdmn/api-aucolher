@@ -615,6 +615,16 @@ Qualquer conta logada de pessoa ou ONG denuncia um anúncio de animal (`ANIMAL`)
 
 Tudo em `/api/admin/**` é só da conta ADMIN: sem token, 401; com token de pessoa ou ONG, 403. As listas não são paginadas (o volume do TCC é pequeno; a busca e os filtros ficam no frontend).
 
+**O admin modera, mas não participa nem edita.** Ele remove, bane e reativa (pelas rotas abaixo); não edita o conteúdo de ninguém, porque quem publica responde pelo que publicou. Fora do painel, as rotas de participante respondem 403 para a conta ADMIN:
+
+| Rota | `message` |
+|---|---|
+| `POST`/`DELETE /api/events/{id}/attendance` | "Contas de admin não confirmam presença em eventos." |
+| `PUT /api/favorites/{animalId}` | "Contas de admin não favoritam animais." |
+| `POST /api/animals` | "Contas de admin não anunciam animais." |
+| `POST /api/adoption-requests`, `/api/match/**` | (regra da SecurityConfig) |
+| `POST /api/reports` | "Contas de admin não fazem denúncias: a moderação é feita pelo painel." |
+
 | Método e rota | O que faz |
 |---|---|
 | `GET /api/admin/stats` | Números e gráficos da Visão geral (abaixo) |
