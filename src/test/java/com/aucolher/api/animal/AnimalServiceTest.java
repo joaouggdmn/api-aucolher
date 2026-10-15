@@ -128,10 +128,83 @@ class AnimalServiceTest {
 
     @Test
     void unknownProfileReturns404() {
-        when(userRepository.existsById(99L)).thenReturn(false);
+        when(userRepository.findById(99L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> animalService.listByOwner(99L))
                 .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    // ===================== Moderação =====================
+
+    @Test
+    void bannedOwnerHasNoPublicAnimals() {
+        User banned = user(1L, OWNER_EMAIL);
+        banned.setActive(false);
+        when(userRepository.findById(1L)).thenReturn(Optional.of(banned));
+
+        assertThatThrownBy(() -> animalService.listByOwner(1L))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void removedOrBannedListingIsHiddenFromEveryoneButTheAdmin() {
+        Animal removed = animal(AnimalStatus.REMOVED);
+        when(animalRepository.findById(10L)).thenReturn(Optional.of(removed));
+        when(userRepository.findByEmail("admin@email.com")).thenReturn(Optional.of(
+                User.builder().id(9L).email("admin@email.com").userType(UserType.ADMIN).build()));
+        when(userRepository.findByEmail(OWNER_EMAIL)).thenReturn(Optional.of(user(1L, OWNER_EMAIL)));
+
+        assertThatThrownBy(() -> animalService.getDetail(10L, OWNER_EMAIL)).isInstanceOf(ResourceNotFoundException.class);
+        assertThat(animalService.getDetail(10L, "admin@email.com").status()).isEqualTo(AnimalStatus.REMOVED);
+
+        Animal ofBannedOwner = animal(AnimalStatus.AVAILABLE);
+        ofBannedOwner.getOwner().setActive(false);
+        when(animalRepository.findById(10L)).thenReturn(Optional.of(ofBannedOwner));
+        assertThatThrownBy(() -> animalService.getDetail(10L, null)).isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void ownerCannotTouchAListingRemovedByModeration() {
+        when(animalRepository.findById(10L)).thenReturn(Optional.of(animal(AnimalStatus.REMOVED)));
+
+        assertThatThrownBy(() -> animalService.changeStatus(10L, OWNER_EMAIL, AnimalStatus.AVAILABLE))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessage("Este anúncio foi removido pela moderação e não pode mais ser alterado.");
+        assertThatThrownBy(() -> animalService.update(10L, OWNER_EMAIL, validRequest()))
+                .isInstanceOf(ForbiddenException.class);
+        assertThatThrownBy(() -> animalService.deactivate(10L, OWNER_EMAIL))
+                .isInstanceOf(ForbiddenException.class);
+    }
+
+    @Test
+    void onlyModerationRemovesAListing() {
+        when(animalRepository.findById(10L)).thenReturn(Optional.of(animal(AnimalStatus.AVAILABLE)));
+
+        assertThatThrownBy(() -> animalService.changeStatus(10L, OWNER_EMAIL, AnimalStatus.REMOVED))
+                .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    void moderationRemovalCancelsTheRequestsWithItsOwnReason() {
+        Animal listing = animal(AnimalStatus.AVAILABLE);
+        when(animalRepository.findById(10L)).thenReturn(Optional.of(listing));
+        when(animalRepository.saveAndFlush(listing)).thenReturn(listing);
+
+        animalService.removeByModeration(10L);
+
+        assertThat(listing.getStatus()).isEqualTo(AnimalStatus.REMOVED);
+        verify(eventPublisher).publishEvent(new AnimalLeftListingEvent(10L, true));
+    }
+
+    @Test
+    void moderationKeepsAdoptedAndAlreadyRemovedListings() {
+        when(animalRepository.findById(10L)).thenReturn(Optional.of(animal(AnimalStatus.ADOPTED)));
+        assertThatThrownBy(() -> animalService.removeByModeration(10L))
+                .hasMessage("Este animal já foi adotado: o anúncio fica só como histórico.");
+
+        when(animalRepository.findById(10L)).thenReturn(Optional.of(animal(AnimalStatus.REMOVED)));
+        assertThatThrownBy(() -> animalService.removeByModeration(10L))
+                .hasMessage("Este anúncio já foi removido.");
     }
 
     // ===================== Retorno e repasse =====================

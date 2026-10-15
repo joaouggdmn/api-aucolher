@@ -14,7 +14,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Favoritos do usuário logado. Animais inativos (tirados do ar pelo dono)
@@ -25,6 +27,9 @@ import java.util.List;
 @RequiredArgsConstructor
 public class FavoriteService {
 
+    /** Fora do ar pelo dono ou removido pela moderação: some da lista de favoritos. */
+    private static final Set<AnimalStatus> HIDDEN = EnumSet.of(AnimalStatus.INACTIVE, AnimalStatus.REMOVED);
+
     private final FavoriteRepository favoriteRepository;
     private final AnimalRepository animalRepository;
     private final AnimalService animalService;
@@ -33,7 +38,7 @@ public class FavoriteService {
     @Transactional(readOnly = true)
     public List<AnimalSummaryDTO> list(String email) {
         List<Animal> animals = favoriteRepository
-                .findByUserIdAndAnimalStatusNotOrderByCreatedAtDescIdDesc(findUser(email).getId(), AnimalStatus.INACTIVE)
+                .findByUserIdAndAnimalStatusNotInAndAnimalOwnerActiveTrueOrderByCreatedAtDescIdDesc(findUser(email).getId(), HIDDEN)
                 .stream()
                 .map(Favorite::getAnimal)
                 .toList();
@@ -43,14 +48,14 @@ public class FavoriteService {
     /** Só os ids, para o frontend marcar os corações nos cards. */
     @Transactional(readOnly = true)
     public List<Long> listIds(String email) {
-        return favoriteRepository.findAnimalIds(findUser(email).getId(), AnimalStatus.INACTIVE);
+        return favoriteRepository.findAnimalIds(findUser(email).getId(), HIDDEN);
     }
 
     /** Idempotente: favoritar de novo não duplica nem dá erro. */
     @Transactional
     public void add(String email, Long animalId) {
         Animal animal = animalRepository.findById(animalId)
-                .filter(found -> found.getStatus() != AnimalStatus.INACTIVE)
+                .filter(Animal::isPubliclyVisible)
                 .orElseThrow(() -> new ResourceNotFoundException("Animal não encontrado"));
 
         favoriteRepository.add(findUser(email).getId(), animal.getId());

@@ -14,10 +14,13 @@ public record AnimalOwnerDTO(
         String name,
         String photoUrl,
         UserType userType,
-        @JsonProperty("isVerified") Boolean verified
+        @JsonProperty("isVerified") Boolean verified,
+        // false = conta banida pela moderação (só o admin chega a ver)
+        Boolean active
 ) {
 
     public static AnimalOwnerDTO from(User owner) {
-        return new AnimalOwnerDTO(owner.getId(), owner.getName(), owner.getPhotoUrl(), owner.getUserType(), owner.getVerified());
+        return new AnimalOwnerDTO(owner.getId(), owner.getName(), owner.getPhotoUrl(), owner.getUserType(),
+                owner.getVerified(), owner.getActive());
     }
 }
