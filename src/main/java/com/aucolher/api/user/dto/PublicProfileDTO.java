@@ -10,16 +10,18 @@ import java.util.List;
 /**
  * Perfil público de uma conta (GET /api/users/{id}/public-profile). Usa os
  * mesmos nomes de campo do UserResponseDTO, para o frontend montar os dois
- * com o mesmo mapper, mas nunca traz e-mail de login nem provedor.
+ * com o mesmo mapper. Nunca traz o provedor.
  *
- * ONG mostra o perfil institucional completo, com endereço da sede. Pessoa
- * física mostra só cidade e UF: rua, número e CEP de quem adota não são públicos.
+ * ONG mostra o perfil institucional completo, com endereço da sede e o
+ * e-mail da conta como contato público. Pessoa física mostra só cidade e UF:
+ * e-mail, rua, número e CEP de quem adota não são públicos.
  *
  * Equipe e horários são coleções lazy: monte este DTO dentro de uma transação.
  */
 public record PublicProfileDTO(
         Long id,
         String name,
+        String email, // só ONG: o contato público é o e-mail de login
         UserType userType,
         LocalDateTime createdAt,
         String photoUrl,
@@ -27,7 +29,6 @@ public record PublicProfileDTO(
 
         // Perfil de ONG (nulos ou vazios para pessoa)
         String cnpj,
-        String institutionalEmail,
         @JsonProperty("isVerified") Boolean verified,
         String instagram,
         String twitter,
@@ -51,12 +52,12 @@ public record PublicProfileDTO(
         return new PublicProfileDTO(
                 user.getId(),
                 user.getName(),
+                ngo ? user.getEmail() : null,
                 user.getUserType(),
                 user.getCreatedAt(),
                 user.getPhotoUrl(),
                 user.getBio(),
                 ngo ? user.getCnpj() : null,
-                ngo ? user.getInstitutionalEmail() : null,
                 ngo && Boolean.TRUE.equals(user.getVerified()),
                 ngo ? user.getInstagram() : null,
                 ngo ? user.getTwitter() : null,

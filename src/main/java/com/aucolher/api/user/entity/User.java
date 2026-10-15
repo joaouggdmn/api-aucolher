@@ -13,8 +13,7 @@ import java.util.List;
  * origem da autenticação (cadastro tradicional ou OAuth2/Google).
  *
  * Campos de perfil seguem a seção 6 de docs/regras-de-negocio.md:
- * bio e foto valem para os dois perfis; CNPJ, e-mail institucional,
- * redes sociais, equipe, horário de visitas e selo são do perfil de ONG.
+ * bio e foto valem para os dois perfis; CNPJ, redes sociais, equipe, horário de visitas e selo são do perfil de ONG.
  * O endereço é obrigatório para ONG e opcional para o usuário comum.
  */
 @Entity
@@ -77,10 +76,6 @@ public class User {
     private String bio;
 
     // ===================== Perfil de ONG =====================
-
-    /** Contato público da ONG — pode ser diferente do e-mail de login. */
-    @Column(name = "institutional_email", length = 150)
-    private String institutionalEmail;
 
     /** Selo de "verificada": toda ONG nasce com ele (não há etapa de aprovação). */
     @Column(name = "is_verified", nullable = false)

@@ -83,7 +83,6 @@ public class UserService {
             throw new BusinessException("O endereço da ONG é obrigatório: informe CEP, logradouro, número, bairro, cidade e UF");
         }
 
-        user.setInstitutionalEmail(dto.institutionalEmail());
         user.setInstagram(dto.instagram());
         user.setTwitter(dto.twitter());
         user.setFacebook(dto.facebook());
