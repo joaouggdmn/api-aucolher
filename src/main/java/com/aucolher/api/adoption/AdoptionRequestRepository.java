@@ -51,6 +51,10 @@ public interface AdoptionRequestRepository extends JpaRepository<AdoptionRequest
             + " AND (r.adopter.id = :userId OR r.animal.owner.id = :userId)")
     List<AdoptionRequest> findInvolving(Long userId, Collection<AdoptionStatus> statuses);
 
+    /** Os animais com algum pedido nos status dados — o admin marca os "em andamento". */
+    @Query("SELECT DISTINCT r.animal.id FROM AdoptionRequest r WHERE r.status IN :statuses")
+    List<Long> findAnimalIdsWithStatus(Collection<AdoptionStatus> statuses);
+
     /** Pedidos de um animal nos status dados — usado para cancelar os ativos. */
     List<AdoptionRequest> findByAnimalIdAndStatusIn(Long animalId, Collection<AdoptionStatus> statuses);
 }
