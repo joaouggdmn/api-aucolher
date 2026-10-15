@@ -136,6 +136,16 @@ psql -U postgres -h localhost -d aucolher_db -f sql/migrations/006_events.sql
 
 Só cria tabelas novas e pode ser repetida.
 
+#### Retorno, repasse e score congelado (migração 012)
+
+A 012 prepara a **taxa de reabandono**: um pedido `CONCLUDED` pode virar `RETURNED` (o animal voltou para quem doou) ou `REHOMED` (o adotante republicou o animal). Ela acrescenta em `adoption_requests` o score do AUmatch congelado na conclusão (`match_score_at_adoption`) e os dados do retorno (`return_date`, `return_reason`, `return_note`, `return_recorded_at`), e em `animals` o `origin_request_id` do anúncio republicado. Sem ela a API não sobe (`Schema-validation: missing column [match_score_at_adoption]`):
+
+```bash
+psql -U postgres -h localhost -d aucolher_db -f sql/migrations/012_adoption_returns.sql
+```
+
+Nenhum dado existente muda: os pedidos já concluídos ficam com o score nulo (entram na taxa geral, fora das faixas). Pode ser repetida.
+
 #### Sem e-mail institucional (migração 015)
 
 A 015 apaga a coluna `users.institutional_email`: o contato público da ONG passa a ser o próprio e-mail de login. (As migrações 007 a 014 estão reservadas para as próximas sprints.) A API sobe com ou sem ela, porque o `validate` não reclama de coluna sobrando, mas rode para o banco ficar igual ao `schema.sql`:
