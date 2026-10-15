@@ -28,7 +28,6 @@ public record UserResponseDTO(
 
         // Perfil de ONG
         String cnpj,
-        String institutionalEmail,
         @JsonProperty("isVerified") Boolean verified,
         String instagram,
         String twitter,
@@ -58,7 +57,6 @@ public record UserResponseDTO(
                 user.getPhotoUrl(),
                 user.getBio(),
                 user.getCnpj(),
-                user.getInstitutionalEmail(),
                 user.getVerified(),
                 user.getInstagram(),
                 user.getTwitter(),

@@ -55,7 +55,6 @@ CREATE TABLE IF NOT EXISTS users (
 
     -- Perfil de ONG
     cnpj                 VARCHAR(14),
-    institutional_email  VARCHAR(150),
     is_verified          BOOLEAN       NOT NULL DEFAULT FALSE,
     instagram            VARCHAR(30),
     twitter              VARCHAR(15),
@@ -87,7 +86,6 @@ COMMENT ON COLUMN users.password            IS 'Hash BCrypt — nulo para contas
 COMMENT ON COLUMN users.photo_url           IS 'URL do avatar ou data URL da imagem comprimida no frontend (enquanto não há upload próprio)';
 COMMENT ON COLUMN users.bio                 IS 'Bio do usuário comum (cuidadores autônomos) ou descrição da ONG';
 COMMENT ON COLUMN users.cnpj                IS 'Apenas os 14 dígitos — obrigatório quando user_type = NGO';
-COMMENT ON COLUMN users.institutional_email IS 'Contato público da ONG (opcional), pode diferir do e-mail de login';
 COMMENT ON COLUMN users.is_verified         IS 'Selo de ONG verificada — toda ONG nasce com ele (sem etapa de aprovação)';
 COMMENT ON COLUMN users.instagram           IS 'Nome de usuário, sem @';
 COMMENT ON COLUMN users.twitter             IS 'Nome de usuário do X/Twitter, sem @';

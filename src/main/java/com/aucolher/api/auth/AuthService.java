@@ -51,7 +51,6 @@ public class AuthService {
                 .verified(true)
                 .photoUrl(dto.photoUrl())
                 .bio(dto.bio())
-                .institutionalEmail(dto.institutionalEmail())
                 .instagram(dto.instagram())
                 .twitter(dto.twitter())
                 .facebook(dto.facebook())

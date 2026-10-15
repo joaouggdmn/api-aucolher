@@ -136,6 +136,16 @@ psql -U postgres -h localhost -d aucolher_db -f sql/migrations/006_events.sql
 
 Só cria tabelas novas e pode ser repetida.
 
+#### Sem e-mail institucional (migração 015)
+
+A 015 apaga a coluna `users.institutional_email`: o contato público da ONG passa a ser o próprio e-mail de login. (As migrações 007 a 014 estão reservadas para as próximas sprints.) A API sobe com ou sem ela, porque o `validate` não reclama de coluna sobrando, mas rode para o banco ficar igual ao `schema.sql`:
+
+```bash
+psql -U postgres -h localhost -d aucolher_db -f sql/migrations/015_drop_institutional_email.sql
+```
+
+Apaga os e-mails institucionais já gravados. Pode ser repetida.
+
 Depois de trazer as mudanças do Git, faça **Build → Rebuild Project** no IntelliJ (ou `mvn clean`): classes antigas compiladas (`Usuario`, `Animal` com campos em português) ficam na pasta `target/` e impedem a API de subir.
 
 ### 2. Variáveis de ambiente
@@ -208,7 +218,6 @@ Content-Type: application/json
   "state": "SC",
   "photoUrl": null,
   "bio": "Resgatamos e encontramos lares para cães e gatos.",
-  "institutionalEmail": "contato@amigosdosanimais.org",
   "instagram": "amigosdosanimais",
   "twitter": "amigosanimais",
   "facebook": "https://facebook.com/amigosdosanimais",
@@ -216,7 +225,7 @@ Content-Type: application/json
 }
 ```
 
-A ONG já nasce ativa e com `isVerified: true`: não há etapa de aprovação. Endereço é obrigatório; `photoUrl`, `bio`, `institutionalEmail`, redes sociais e `foundedYear` são opcionais. `foundedYear` precisa estar entre 1800 e o ano atual. CNPJ e CEP podem vir com ou sem máscara (são gravados só com dígitos) e Instagram/X com ou sem `@`.
+A ONG já nasce ativa e com `isVerified: true`: não há etapa de aprovação. Endereço é obrigatório; `photoUrl`, `bio`, redes sociais e `foundedYear` são opcionais. O contato público da ONG é o próprio e-mail de login. `foundedYear` precisa estar entre 1800 e o ano atual. CNPJ e CEP podem vir com ou sem máscara (são gravados só com dígitos) e Instagram/X com ou sem `@`.
 
 ### Cadastro de Usuário Comum
 ```
@@ -271,7 +280,6 @@ Todas as respostas de autenticação seguem o formato:
     "photoUrl": null,
     "bio": null,
     "cnpj": null,
-    "institutionalEmail": null,
     "isVerified": false,
     "instagram": null,
     "twitter": null,
@@ -302,7 +310,6 @@ Content-Type: application/json
   "name": "ONG Amigos dos Animais",
   "photoUrl": null,
   "bio": "Resgatamos e encontramos lares para cães e gatos.",
-  "institutionalEmail": "contato@amigosdosanimais.org",
   "instagram": "amigosdosanimais",
   "twitter": null,
   "facebook": "https://facebook.com/amigosdosanimais",
@@ -326,9 +333,9 @@ A conta editada é sempre a do token — não há id na rota. É uma substituiç
 GET /api/users/{id}/public-profile
 ```
 
-Público, sem login: é a página de perfil de uma ONG ou pessoa. Traz os mesmos campos do objeto `user` acima, menos `email` e `provider`.
-- ONG: perfil institucional completo, com endereço da sede, equipe e horários de visita.
-- Pessoa: só `city` e `state` do endereço; CEP, rua, número e os campos de ONG vêm nulos.
+Público, sem login: é a página de perfil de uma ONG ou pessoa. Traz os mesmos campos do objeto `user` acima, menos `provider`.
+- ONG: perfil institucional completo, com endereço da sede, equipe, horários de visita e o `email` de login como contato público.
+- Pessoa: só `city` e `state` do endereço; `email`, CEP, rua, número e os campos de ONG vêm nulos.
 - Conta inexistente, desativada ou admin responde 404.
 
 ### Login via Google (OAuth2)
