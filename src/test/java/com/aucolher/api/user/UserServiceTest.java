@@ -40,7 +40,7 @@ class UserServiceTest {
     void ngoProfileShowsTheInstitutionalDataAndAddress() {
         when(userRepository.findById(7L)).thenReturn(Optional.of(user(UserType.NGO)));
 
-        PublicProfileDTO profile = userService.getPublicProfile(7L);
+        PublicProfileDTO profile = userService.getPublicProfile(7L, null);
 
         assertThat(profile.userType()).isEqualTo(UserType.NGO);
         assertThat(profile.verified()).isTrue();
@@ -54,7 +54,7 @@ class UserServiceTest {
     void personProfileHidesTheStreetAddressAndNgoFields() {
         when(userRepository.findById(7L)).thenReturn(Optional.of(user(UserType.PERSON)));
 
-        PublicProfileDTO profile = userService.getPublicProfile(7L);
+        PublicProfileDTO profile = userService.getPublicProfile(7L, null);
 
         assertThat(profile.email()).isNull();
         assertThat(profile.cep()).isNull();
@@ -77,8 +77,22 @@ class UserServiceTest {
 
         for (long id = 1; id <= 3; id++) {
             long missing = id;
-            assertThatThrownBy(() -> userService.getPublicProfile(missing))
+            assertThatThrownBy(() -> userService.getPublicProfile(missing, null))
                     .isInstanceOf(ResourceNotFoundException.class);
         }
+    }
+
+    @Test
+    void onlyTheAdminSeesABannedProfile() {
+        User banned = user(UserType.PERSON);
+        banned.setActive(false);
+        when(userRepository.findById(2L)).thenReturn(Optional.of(banned));
+        when(userRepository.findByEmail("admin@email.com")).thenReturn(Optional.of(
+                User.builder().id(9L).email("admin@email.com").userType(UserType.ADMIN).build()));
+        when(userRepository.findByEmail("person@email.com")).thenReturn(Optional.of(user(UserType.PERSON)));
+
+        assertThat(userService.getPublicProfile(2L, "admin@email.com").active()).isFalse();
+        assertThatThrownBy(() -> userService.getPublicProfile(2L, "person@email.com"))
+                .isInstanceOf(ResourceNotFoundException.class);
     }
 }

@@ -40,13 +40,16 @@ public class UserService {
 
     /**
      * Perfil público de qualquer conta ativa. Admin não tem perfil público, e
-     * conta desativada some do site: os dois casos respondem 404, como um id
-     * que não existe.
+     * conta banida some do site: os dois casos respondem 404, como um id que
+     * não existe. O admin ainda vê o perfil banido (com `active: false`), para
+     * conferir e reativar a conta.
+     *
+     * @param viewerEmail e-mail de quem está vendo, ou null se não estiver logado
      */
     @Transactional(readOnly = true)
-    public PublicProfileDTO getPublicProfile(Long id) {
+    public PublicProfileDTO getPublicProfile(Long id, String viewerEmail) {
         return userRepository.findById(id)
-                .filter(user -> Boolean.TRUE.equals(user.getActive()))
+                .filter(user -> Boolean.TRUE.equals(user.getActive()) || isAdmin(viewerEmail))
                 .filter(user -> user.getUserType() != UserType.ADMIN)
                 .map(PublicProfileDTO::from)
                 .orElseThrow(() -> new ResourceNotFoundException("Perfil não encontrado"));
@@ -98,5 +101,11 @@ public class UserService {
 
         user.getVisitingHours().clear();
         dto.visitingHours().forEach(slot -> user.getVisitingHours().add(new VisitingHour(slot.days(), slot.hours())));
+    }
+
+    private boolean isAdmin(String email) {
+        return email != null && userRepository.findByEmail(email)
+                .map(user -> user.getUserType() == UserType.ADMIN)
+                .orElse(false);
     }
 }

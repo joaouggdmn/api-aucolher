@@ -102,11 +102,14 @@ public class AnimalService {
         return summarize(animalRepository.findByOwnerEmailOrderByCreatedAtDesc(ownerEmail));
     }
 
-    /** Animais disponíveis de um perfil público (conta banida não tem perfil público). */
+    /**
+     * Animais disponíveis de um perfil público. Conta banida não tem perfil
+     * público — só o admin ainda vê os animais dela.
+     */
     @Transactional(readOnly = true)
-    public List<AnimalSummaryDTO> listByOwner(Long userId) {
+    public List<AnimalSummaryDTO> listByOwner(Long userId, String viewerEmail) {
         userRepository.findById(userId)
-                .filter(owner -> Boolean.TRUE.equals(owner.getActive()))
+                .filter(owner -> Boolean.TRUE.equals(owner.getActive()) || isAdmin(viewerEmail))
                 .orElseThrow(() -> new ResourceNotFoundException("Usuário não encontrado"));
         return summarize(animalRepository.findByOwnerIdAndStatusOrderByCreatedAtDesc(userId, AnimalStatus.AVAILABLE));
     }
