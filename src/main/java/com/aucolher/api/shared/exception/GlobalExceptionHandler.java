@@ -38,6 +38,11 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.FORBIDDEN, "Acesso negado", ex.getMessage(), null);
     }
 
+    @ExceptionHandler(ConflictException.class)
+    public ResponseEntity<ErrorResponseDTO> handleConflict(ConflictException ex) {
+        return build(HttpStatus.CONFLICT, "Conflito", ex.getMessage(), null);
+    }
+
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ErrorResponseDTO> handleNotFound(ResourceNotFoundException ex) {
         return build(HttpStatus.NOT_FOUND, "Não encontrado", ex.getMessage(), null);

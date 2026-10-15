@@ -193,6 +193,16 @@ class AdoptionTransitionsTest {
         assertThat(awaiting.getCancelledFromStatus()).isEqualTo(AdoptionStatus.AWAITING_DELIVERY);
     }
 
+    @Test
+    void listingRemovedByModerationCancelsWithItsOwnReason() {
+        AdoptionRequest accepted = otherRequest(51L, AdoptionStatus.ACCEPTED);
+        when(requestRepository.findByAnimalIdAndStatusIn(10L, AdoptionStatus.ACTIVE)).thenReturn(List.of(accepted));
+
+        requestService.onAnimalLeftListing(new AnimalLeftListingEvent(10L, true));
+
+        assertThat(accepted.getCancelReason()).isEqualTo(CancelReason.LISTING_REMOVED);
+    }
+
     // ===================== Fixtures =====================
 
     private AdoptionRequest givenRequest(AdoptionStatus status) {
