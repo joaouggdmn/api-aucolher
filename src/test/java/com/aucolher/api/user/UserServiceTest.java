@@ -45,6 +45,7 @@ class UserServiceTest {
         assertThat(profile.userType()).isEqualTo(UserType.NGO);
         assertThat(profile.verified()).isTrue();
         assertThat(profile.cnpj()).isEqualTo("11222333000181");
+        assertThat(profile.email()).isEqualTo("conta@email.com");
         assertThat(profile.street()).isEqualTo("Rua A");
         assertThat(profile.city()).isEqualTo("Araranguá");
     }
@@ -55,6 +56,7 @@ class UserServiceTest {
 
         PublicProfileDTO profile = userService.getPublicProfile(7L);
 
+        assertThat(profile.email()).isNull();
         assertThat(profile.cep()).isNull();
         assertThat(profile.street()).isNull();
         assertThat(profile.number()).isNull();
