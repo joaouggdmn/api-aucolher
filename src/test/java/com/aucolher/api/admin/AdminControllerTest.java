@@ -42,6 +42,8 @@ class AdminControllerTest {
     @MockBean
     private AdminService adminService;
     @MockBean
+    private AdminStatsService statsService;
+    @MockBean
     private ModerationService moderationService;
     @MockBean
     private EventService eventService;
@@ -110,6 +112,7 @@ class AdminControllerTest {
     @Test
     @WithMockUser(username = "admin@email.com", roles = "ADMIN")
     void adminSeesEveryList() throws Exception {
+        mockMvc.perform(get("/api/admin/stats")).andExpect(status().isOk());
         mockMvc.perform(get("/api/admin/users")).andExpect(status().isOk());
         mockMvc.perform(get("/api/admin/events")).andExpect(status().isOk());
         mockMvc.perform(get("/api/admin/reports")).andExpect(status().isOk());

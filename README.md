@@ -1,6 +1,6 @@
 # AUcolher API — Plataforma de Adoção de Animais
 
-API REST em Spring Boot 3 / Java 17 do AUcolher: cadastro, login e autenticação (tradicional + OAuth2 Google) de dois perfis de usuário, **ONG** e **Usuário Comum**, edição do perfil ("Minha conta"), anúncios de animais para adoção, favoritos, **eventos** das ONGs (com confirmação de presença), o **AUmatch** (quiz de estilo de vida e deck ordenado por compatibilidade) e os **pedidos de adoção**, com avaliações depois da adoção concluída.
+API REST em Spring Boot 3 / Java 17 do AUcolher: cadastro, login e autenticação (tradicional + OAuth2 Google) de dois perfis de usuário, **ONG** e **Usuário Comum**, edição do perfil ("Minha conta"), anúncios de animais para adoção, favoritos, **eventos** das ONGs (com confirmação de presença), o **AUmatch** (quiz de estilo de vida e deck ordenado por compatibilidade) os **pedidos de adoção**, com avaliações depois da adoção concluída, o **retorno e o repasse** de uma adoção (a taxa de reabandono), as **denúncias** e o **painel do admin**, com estatísticas e moderação.
 
 ## Stack
 
@@ -65,6 +65,12 @@ src/main/java/com/aucolher/api/
 │   ├── ReportRepository.java
 │   ├── entity/                             # Report + enums (ReportTargetType, ReportReason, ReportStatus, ReportResolution)
 │   └── dto/                                # NewReportDTO, ReportDTO (com reporter só para o admin), ReportTargetDTO
+├── admin/                                  # Painel do admin
+│   ├── AdminController.java                # /api/admin: estatísticas, listas e moderação
+│   ├── AdminService.java                   # Listas de contas e anúncios
+│   ├── AdminStatsService.java              # Visão geral, com a taxa de reabandono
+│   ├── ModerationService.java              # Banir, reativar, remover anúncio/evento, arquivar denúncia
+│   └── dto/                                # AdminStatsDTO, AdminUserDTO, AdminAnimalDTO, ListingStatus...
 ├── shared/                                 # Comum a todas as funcionalidades
 │   ├── dto/PageDTO.java                    # Formato padrão das respostas paginadas
 │   ├── exception/                          # Exceções (400, 401, 403, 404), @RestControllerAdvice e ErrorResponseDTO
@@ -325,6 +331,8 @@ Todas as respostas de autenticação seguem o formato:
 ```
 
 Use o token nas requisições autenticadas: `Authorization: Bearer {token}`.
+
+**Conta suspensa pela moderação** (`users.active = false`): o login (tradicional ou Google) responde **403** com `message` "Esta conta foi suspensa pela moderação do AUcolher." — só depois de a senha conferir. Um token emitido antes do banimento também deixa de valer na hora: qualquer requisição com ele responde o mesmo 403, e o frontend desloga com o aviso.
 
 ### Edição do perfil ("Minha conta")
 ```
@@ -603,9 +611,41 @@ Qualquer conta logada de pessoa ou ONG denuncia um anúncio de animal (`ANIMAL`)
 - **Uma denúncia em análise por pessoa e alvo:** a segunda responde **409**; depois de julgada, a pessoa pode denunciar de novo. O índice `uq_reports_pending` garante isso também com dois cliques ao mesmo tempo.
 - A denúncia guarda uma **cópia do alvo** (`target`): nome, foto, espécie e dono (anúncio) ou nome, foto, tipo, cidade e UF (perfil). O admin continua vendo o que foi denunciado depois de o anúncio sair do ar.
 
-### Admin: pedidos
+### Admin
 
-`GET /api/admin/adoption-requests` (só a conta ADMIN) lista todos os pedidos, do mais recente para o mais antigo, numa versão enxuta: status, motivo, datas, o animal (`id`, `name`, `species`, `status`, `coverPhoto`), o dono e o adotante (`id`, `name`, `userType`). Alimenta o funil de adoções, as adoções por mês e o ranking de ONGs do painel.
+Tudo em `/api/admin/**` é só da conta ADMIN: sem token, 401; com token de pessoa ou ONG, 403. As listas não são paginadas (o volume do TCC é pequeno; a busca e os filtros ficam no frontend).
+
+| Método e rota | O que faz |
+|---|---|
+| `GET /api/admin/stats` | Números e gráficos da Visão geral (abaixo) |
+| `GET /api/admin/users` | Contas de pessoas e ONGs (sem admins), mais recentes primeiro, com `active` e `animalsCount` |
+| `GET /api/admin/animals` | Todos os anúncios, em qualquer status: o card da vitrine (com `owner.active`) + `listingStatus` (`AVAILABLE`, `IN_PROGRESS`, `ADOPTED`, `INACTIVE` ou `REMOVED`). `IN_PROGRESS` = disponível com pedido aceito ou aguardando entrega |
+| `GET /api/admin/events` | Todos os eventos, da data mais distante para a mais antiga, com `ngo.active` e `removedByModeration` |
+| `GET /api/admin/adoption-requests` | Todos os pedidos, enxutos: status, motivo, datas, o animal (`id`, `name`, `species`, `status`, `coverPhoto`), o dono e o adotante |
+| `GET /api/admin/reports` | Todas as denúncias, em qualquer situação, com quem denunciou (`reporter`) |
+| `POST /api/admin/reports/{id}/dismiss` | Arquiva o caso (esta denúncia e as outras pendentes do mesmo alvo) e devolve as arquivadas |
+| `POST /api/admin/reports/{id}/ban` | Bane a conta por trás do caso (o perfil denunciado ou o dono do anúncio) e devolve as denúncias resolvidas |
+| `PATCH /api/admin/users/{id}/status` | `{ "active": false }` bane, `{ "active": true }` reativa; devolve a conta |
+| `DELETE /api/admin/animals/{id}` | Remove o anúncio (`REMOVED`) — 204 |
+| `DELETE /api/admin/events/{id}` | Remove o evento (`CANCELLED` + `removedByModeration`) — 204 |
+
+**Banir** (numa transação): a conta para de entrar e o token dela deixa de valer; as denúncias pendentes contra o perfil e contra os anúncios dela são resolvidas (`ACCOUNT_BANNED`); os pedidos ativos em que ela é adotante ou dona são cancelados (`ACCOUNT_BANNED`). Os animais e eventos dela **não mudam**: somem das rotas públicas (vitrine, perfil, favoritos, deck, detalhe, eventos) e voltam se a conta for reativada. Pedidos cancelados e denúncias resolvidas não voltam. Contas admin não podem ser banidas (400).
+
+**Remover anúncio:** vira `REMOVED`, sai do site (o detalhe responde 404 para todos, menos para o admin), os pedidos ativos são cancelados (`LISTING_REMOVED`) e as denúncias contra ele são resolvidas. O dono continua vendo o anúncio em `/api/animals/mine`, mas `PUT`, `PATCH /status` e `DELETE` respondem 403. Animal adotado não é removido (fica como histórico). Não há desfazer.
+
+**Visão geral** (`GET /api/admin/stats`) — as séries mensais cobrem os últimos 12 meses (`"YYYY-MM"`), com zero onde não houve nada:
+
+| Bloco | O que conta |
+|---|---|
+| `users` | Pessoas e ONGs; `newByMonth` pela data de cadastro |
+| `animals` | `available`, `inProgress` e `bySpecies` sem os anúncios fora do ar e sem os de conta banida; `adopted` e `removed` contam sempre |
+| `adoptions` | O funil (cada etapa conta quem chegou nela ou passou dela; retorno e repasse contam como adoção) e `concludedByMonth` |
+| `events` | `upcoming`/`past` (ativos de ONG ativa), `cancelled` e `suspended` (de ONG banida) |
+| `ngoRanking.byAdoptions` | As 5 ONGs com mais adoções de animais delas |
+| `recentActivity` | Os 8 acontecimentos mais recentes: `ACCOUNT_CREATED`, `ADOPTION_CONCLUDED`, `EVENT_CREATED` |
+| `reports` | `pending` (denúncias em análise) e `pendingTargets` (alvos diferentes, os "casos") |
+| `returns` | A **taxa de reabandono**, sem as adoções feitas por ONG: `adoptions` (`CONCLUDED` + `RETURNED` + `REHOMED`), `returned`, `rehomed`, `rate` (% com uma casa, nula sem adoções), `byRange` pelo score congelado (`HIGH` 80–100, `MEDIUM` 50–79, `LOW` 0–49), `noScore` e `byReason` (sempre as 7 chaves) |
+| `donations`, `campaigns`, `ngoRanking.byRaised` | **Zerados** enquanto não há campanhas no backend (migração 007); o frontend os completa com o mock |
 
 ### AUmatch
 
