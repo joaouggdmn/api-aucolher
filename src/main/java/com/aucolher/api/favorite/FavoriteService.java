@@ -7,9 +7,11 @@ import com.aucolher.api.animal.entity.Animal;
 import com.aucolher.api.animal.entity.AnimalStatus;
 import com.aucolher.api.favorite.entity.Favorite;
 import com.aucolher.api.shared.exception.BusinessException;
+import com.aucolher.api.shared.exception.ForbiddenException;
 import com.aucolher.api.shared.exception.ResourceNotFoundException;
 import com.aucolher.api.user.UserRepository;
 import com.aucolher.api.user.entity.User;
+import com.aucolher.api.user.entity.UserType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -54,11 +56,16 @@ public class FavoriteService {
     /** Idempotente: favoritar de novo não duplica nem dá erro. */
     @Transactional
     public void add(String email, Long animalId) {
+        User user = findUser(email);
+        // O admin modera o site, mas não participa dele
+        if (user.getUserType() == UserType.ADMIN) {
+            throw new ForbiddenException("Contas de admin não favoritam animais.");
+        }
         Animal animal = animalRepository.findById(animalId)
                 .filter(Animal::isPubliclyVisible)
                 .orElseThrow(() -> new ResourceNotFoundException("Animal não encontrado"));
 
-        favoriteRepository.add(findUser(email).getId(), animal.getId());
+        favoriteRepository.add(user.getId(), animal.getId());
     }
 
     /** Idempotente: desfavoritar o que não está favoritado não dá erro. */

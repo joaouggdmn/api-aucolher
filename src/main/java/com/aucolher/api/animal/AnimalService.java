@@ -40,13 +40,17 @@ public class AnimalService {
     private final ApplicationEventPublisher eventPublisher;
 
     /**
-     * Qualquer conta (ONG ou usuário comum) pode anunciar, desde que tenha
-     * cidade e UF no perfil — é de lá que sai a localização do animal.
+     * Pessoa ou ONG pode anunciar (o admin não), desde que tenha cidade e UF
+     * no perfil — é de lá que sai a localização do animal.
      */
     @Transactional
     public AnimalDetailDTO create(String ownerEmail, AnimalRequestDTO dto) {
         User owner = userRepository.findByEmail(ownerEmail)
                 .orElseThrow(() -> new BusinessException("Usuário não encontrado"));
+        // O admin modera o site, mas não participa dele
+        if (owner.getUserType() == UserType.ADMIN) {
+            throw new ForbiddenException("Contas de admin não anunciam animais.");
+        }
         requireLocation(owner);
 
         Animal animal = new Animal();
