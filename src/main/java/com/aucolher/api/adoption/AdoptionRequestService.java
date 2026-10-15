@@ -4,6 +4,7 @@ import com.aucolher.api.adoption.dto.AdminAdoptionRequestDTO;
 import com.aucolher.api.adoption.dto.AdopterDTO;
 import com.aucolher.api.adoption.dto.AdoptionRequestDTO;
 import com.aucolher.api.adoption.dto.RegisterReturnDTO;
+import com.aucolher.api.adoption.dto.RehomeDTO;
 import com.aucolher.api.adoption.dto.RequestReviewsDTO;
 import com.aucolher.api.adoption.dto.ReviewDTO;
 import com.aucolher.api.adoption.entity.AdoptionReview;
@@ -15,6 +16,7 @@ import com.aucolher.api.adoption.entity.ReviewRole;
 import com.aucolher.api.animal.AnimalLeftListingEvent;
 import com.aucolher.api.animal.AnimalRepository;
 import com.aucolher.api.animal.AnimalService;
+import com.aucolher.api.animal.dto.AnimalRequestDTO;
 import com.aucolher.api.animal.dto.AnimalSummaryDTO;
 import com.aucolher.api.animal.entity.Animal;
 import com.aucolher.api.animal.entity.AnimalStatus;
@@ -255,6 +257,68 @@ public class AdoptionRequestService {
         return toDtos(List.of(requestRepository.saveAndFlush(request))).get(0);
     }
 
+    /** "Republicar anúncio": o anúncio original no formato do cadastro, para o formulário abrir preenchido. */
+    @Transactional(readOnly = true)
+    public AnimalRequestDTO getRehomeDraft(Long id, String email) {
+        AdoptionRequest request = findRequest(id);
+        requireRole(request.isAdopter(email), "Só quem adotou pode republicar o animal");
+        requireNotNgoAdoption(request);
+        requireRehomable(request);
+        return animalService.toRehomeDraft(request.getAnimal());
+    }
+
+    /**
+     * O adotante anuncia o animal para uma nova adoção, numa transação só:
+     * nasce o anúncio novo (AVAILABLE, em nome dele, apontando para este
+     * pedido) e o pedido vira REHOMED. O anúncio original continua ADOPTED
+     * no histórico de quem doou.
+     */
+    @Transactional
+    public AdoptionRequestDTO rehome(Long id, String email, RehomeDTO body) {
+        AdoptionRequest request = findRequest(id);
+        requireRole(request.isAdopter(email), "Só quem adotou pode republicar o animal");
+        requireNotNgoAdoption(request);
+        lock(request);
+        requireRehomable(request);
+        requireReason(body.reason(), body.note());
+
+        animalService.createRehomed(request.getAdopter(), body.animal(), request.getId());
+        request.rehome(body.reason(), body.note());
+        return toDtos(List.of(requestRepository.saveAndFlush(request))).get(0);
+    }
+
+    /**
+     * "Desisti de doar": enquanto o anúncio novo não gerou uma adoção, o
+     * repasse é desfeito — o anúncio sai do ar e perde o vínculo, e o pedido
+     * volta a CONCLUDED sem os dados do repasse. O anúncio fica travado para
+     * não concluir uma adoção no meio do caminho.
+     */
+    @Transactional
+    public AdoptionRequestDTO undoRehome(Long id, String email) {
+        AdoptionRequest request = findRequest(id);
+        requireRole(request.isAdopter(email), "Só quem adotou pode republicar o animal");
+        requireNotNgoAdoption(request);
+        lock(request);
+        requireStatus(request, "Esta adoção não foi republicada", AdoptionStatus.REHOMED);
+
+        animalRepository.findByOriginRequestId(request.getId()).ifPresent(listing -> {
+            entityManager.refresh(listing, LockModeType.PESSIMISTIC_WRITE);
+            if (listing.getStatus() == AnimalStatus.ADOPTED) {
+                throw new BusinessException("O anúncio já gerou uma nova adoção: não dá para desfazer");
+            }
+            animalService.withdrawRehomed(listing);
+        });
+        request.undoRehome();
+        return toDtos(List.of(requestRepository.saveAndFlush(request))).get(0);
+    }
+
+    private static void requireRehomable(AdoptionRequest request) {
+        if (request.getStatus() == AdoptionStatus.RETURNED) {
+            throw new BusinessException("Este animal já voltou para quem doou");
+        }
+        requireStatus(request, "Só uma adoção concluída pode ser republicada", AdoptionStatus.CONCLUDED);
+    }
+
     /** Resgate de ONG não é adoção final: não tem retorno nem repasse, e fica fora da taxa. */
     private static void requireNotNgoAdoption(AdoptionRequest request) {
         if (request.getAdopter().getUserType() == UserType.NGO) {
@@ -311,8 +375,8 @@ public class AdoptionRequestService {
 
     /**
      * Monta os pedidos com o card do animal (as capas numa consulta só), as
-     * respostas do quiz de cada adotante, o score de compatibilidade atual e
-     * as avaliações.
+     * respostas do quiz de cada adotante, o score de compatibilidade atual, o
+     * anúncio novo dos repasses e as avaliações.
      */
     List<AdoptionRequestDTO> toDtos(List<AdoptionRequest> requests) {
         if (requests.isEmpty()) return List.of();
@@ -327,6 +391,13 @@ public class AdoptionRequestService {
         Map<Long, MatchProfile> profiles = matchProfileRepository.findAllById(adopterIds).stream()
                 .collect(Collectors.toMap(MatchProfile::getUserId, Function.identity()));
 
+        // O anúncio novo de cada repasse, numa consulta só
+        List<Long> rehomedIds = requests.stream()
+                .filter(request -> request.getStatus() == AdoptionStatus.REHOMED)
+                .map(AdoptionRequest::getId).toList();
+        Map<Long, Long> rehomedListings = rehomedIds.isEmpty() ? Map.of() : animalRepository.findRehomedListings(rehomedIds).stream()
+                .collect(Collectors.toMap(AnimalRepository.RehomedListing::getRequestId, AnimalRepository.RehomedListing::getAnimalId));
+
         Map<Long, List<AdoptionReview>> reviews = reviewRepository
                 .findByRequestIdIn(requests.stream().map(AdoptionRequest::getId).toList()).stream()
                 .collect(Collectors.groupingBy(review -> review.getRequest().getId()));
@@ -338,7 +409,7 @@ public class AdoptionRequestService {
                     cards.get(request.getAnimal().getId()),
                     AdopterDTO.from(request.getAdopter(), profile),
                     MatchScoreCalculator.score(profile, request.getAnimal()).score(),
-                    null,
+                    rehomedListings.get(request.getId()),
                     reviewsOf(reviews.getOrDefault(request.getId(), List.of())));
         }).toList();
     }

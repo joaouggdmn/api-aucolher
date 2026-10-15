@@ -4,6 +4,8 @@ import com.aucolher.api.adoption.dto.AdoptionRequestDTO;
 import com.aucolher.api.adoption.dto.ChangeRequestStatusDTO;
 import com.aucolher.api.adoption.dto.NewAdoptionRequestDTO;
 import com.aucolher.api.adoption.dto.RegisterReturnDTO;
+import com.aucolher.api.adoption.dto.RehomeDTO;
+import com.aucolher.api.animal.dto.AnimalRequestDTO;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -70,5 +72,25 @@ public class AdoptionRequestController {
                                                              @RequestBody RegisterReturnDTO body,
                                                              @AuthenticationPrincipal UserDetails loggedUser) {
         return ResponseEntity.ok(requestService.registerReturn(id, loggedUser.getUsername(), body));
+    }
+
+    /** "Republicar anúncio": o anúncio original no formato do cadastro, para o formulário abrir preenchido. */
+    @GetMapping("/{id}/rehome-draft")
+    public ResponseEntity<AnimalRequestDTO> getRehomeDraft(@PathVariable Long id, @AuthenticationPrincipal UserDetails loggedUser) {
+        return ResponseEntity.ok(requestService.getRehomeDraft(id, loggedUser.getUsername()));
+    }
+
+    /** O adotante anuncia o animal para uma nova adoção: `{ "reason", "note", "animal": { ...cadastro } }`. */
+    @PostMapping("/{id}/rehome")
+    public ResponseEntity<AdoptionRequestDTO> rehome(@PathVariable Long id,
+                                                     @Valid @RequestBody RehomeDTO body,
+                                                     @AuthenticationPrincipal UserDetails loggedUser) {
+        return ResponseEntity.ok(requestService.rehome(id, loggedUser.getUsername(), body));
+    }
+
+    /** "Desisti de doar": desfaz o repasse enquanto o anúncio novo não gerou uma adoção. */
+    @PostMapping("/{id}/rehome/undo")
+    public ResponseEntity<AdoptionRequestDTO> undoRehome(@PathVariable Long id, @AuthenticationPrincipal UserDetails loggedUser) {
+        return ResponseEntity.ok(requestService.undoRehome(id, loggedUser.getUsername()));
     }
 }

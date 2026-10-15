@@ -12,6 +12,7 @@ import org.springframework.data.jpa.repository.Query;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * As listagens carregam o dono junto (@EntityGraph) — sem isso, montar cada
@@ -38,6 +39,18 @@ public interface AnimalRepository extends JpaRepository<Animal, Long>, JpaSpecif
      */
     @EntityGraph(attributePaths = "owner")
     List<Animal> findByStatusAndOwnerActiveTrueAndOwnerIdNot(AnimalStatus status, Long ownerId);
+
+    /** O anúncio republicado a partir de um pedido de adoção (repasse). */
+    Optional<Animal> findByOriginRequestId(Long requestId);
+
+    /** Os anúncios republicados de vários pedidos, numa consulta só: pedido → anúncio. */
+    @Query("SELECT a.originRequestId AS requestId, a.id AS animalId FROM Animal a WHERE a.originRequestId IN :requestIds")
+    List<RehomedListing> findRehomedListings(Collection<Long> requestIds);
+
+    interface RehomedListing {
+        Long getRequestId();
+        Long getAnimalId();
+    }
 
     /**
      * Só a foto de capa (ordem 0) de cada animal, numa consulta única. Os

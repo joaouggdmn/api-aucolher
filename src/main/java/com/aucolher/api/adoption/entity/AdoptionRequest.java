@@ -6,6 +6,8 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -68,6 +70,7 @@ public class AdoptionRequest {
      * ONG adotando e nos pedidos concluídos antes da migração 012.
      */
     @Column(name = "match_score_at_adoption")
+    @JdbcTypeCode(SqlTypes.SMALLINT) // a coluna é SMALLINT (0 a 100)
     private Integer matchScoreAtAdoption;
 
     // ===================== Retorno (RETURNED) ou repasse (REHOMED) =====================

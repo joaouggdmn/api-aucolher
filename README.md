@@ -524,6 +524,9 @@ Uma adoção `CONCLUDED` pode não dar certo por dois caminhos, que contam igual
 | Método e rota | Quem | O que faz |
 |---|---|---|
 | `POST /api/adoption-requests/{id}/return` | dono do animal | `{ "returnDate": "2026-11-03", "reason": "OTHER_PETS", "note": "..." }` — o pedido vira `RETURNED` e o anúncio volta para o doador fora do ar (`ADOPTED → INACTIVE`, a única saída de `ADOPTED`). Repetir num pedido já `RETURNED` corrige os dados sem mexer no animal |
+| `GET /api/adoption-requests/{id}/rehome-draft` | adotante | O anúncio original no formato do cadastro (`AnimalRequestDTO`, fotos incluídas), para o formulário de "Republicar anúncio" abrir preenchido. Só em `CONCLUDED` |
+| `POST /api/adoption-requests/{id}/rehome` | adotante | `{ "reason": "HOUSING_OR_ROUTINE", "note": "...", "animal": { ...cadastro } }` — numa transação, nasce o anúncio novo (`AVAILABLE`, em nome do adotante, com `originRequestId` = este pedido) e o pedido vira `REHOMED`. O `animal` passa pelas mesmas validações do `POST /api/animals`. O anúncio original continua `ADOPTED` |
+| `POST /api/adoption-requests/{id}/rehome/undo` | adotante | "Desisti de doar": enquanto o anúncio novo não foi adotado, ele sai do ar (os pedidos ativos dele são cancelados com `ANIMAL_UNAVAILABLE`) e perde o vínculo, e o pedido volta a `CONCLUDED`. Tirar do ar ou excluir o anúncio novo **não** desfaz o repasse |
 
 - `reason`: `BEHAVIOR`, `OTHER_PETS`, `CHILDREN`, `HOUSING_OR_ROUTINE`, `COSTS`, `ANIMAL_HEALTH` ou `OTHER` (que exige `note`). `note` tem até 500 caracteres.
 - A data não pode ser futura nem anterior à conclusão.
@@ -539,6 +542,8 @@ Uma adoção `CONCLUDED` pode não dar certo por dois caminhos, que contam igual
   "rehomedAnimalId": null
 }
 ```
+
+`type` repete o status; em `REHOMED`, `date` é o dia da republicação e `rehomedAnimalId` é o anúncio novo. Os cards de animal (`AnimalSummaryDTO` e `AnimalDetailDTO`) trazem `originRequestId`: nulo, ou o pedido de onde veio um anúncio republicado.
 
 ### Avaliações
 
