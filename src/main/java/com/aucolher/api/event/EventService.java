@@ -7,6 +7,7 @@ import com.aucolher.api.event.entity.EventStatus;
 import com.aucolher.api.shared.exception.BusinessException;
 import com.aucolher.api.shared.exception.ForbiddenException;
 import com.aucolher.api.shared.exception.ResourceNotFoundException;
+import com.aucolher.api.shared.validation.PhotoUrl;
 import com.aucolher.api.user.UserRepository;
 import com.aucolher.api.user.entity.User;
 import com.aucolher.api.user.entity.UserType;
@@ -25,7 +26,6 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class EventService {
 
-    private static final int MAX_COVER_LENGTH = 600_000;
     private static final Pattern COVER_PATTERN = Pattern.compile(
             "^(https?://\\S+|data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+)$");
 
@@ -221,7 +221,7 @@ public class EventService {
         }
         String cover = req.coverUrl();
         if (cover != null) {
-            if (cover.length() > MAX_COVER_LENGTH) {
+            if (cover.length() > PhotoUrl.COVER_MAX_LENGTH) {
                 throw new BusinessException("A imagem de capa é grande demais.");
             }
             if (!COVER_PATTERN.matcher(cover).matches()) {

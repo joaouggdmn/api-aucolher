@@ -25,6 +25,7 @@ public record PublicProfileDTO(
         UserType userType,
         LocalDateTime createdAt,
         String photoUrl,
+        String coverUrl, // banner: só ONG
         String bio,
 
         // Perfil de ONG (nulos ou vazios para pessoa)
@@ -59,6 +60,7 @@ public record PublicProfileDTO(
                 user.getUserType(),
                 user.getCreatedAt(),
                 user.getPhotoUrl(),
+                ngo ? user.getCoverUrl() : null,
                 user.getBio(),
                 ngo ? user.getCnpj() : null,
                 ngo && Boolean.TRUE.equals(user.getVerified()),

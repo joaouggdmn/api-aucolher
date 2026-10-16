@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS users (
 
     -- Perfil (comum e ONG)
     photo_url            TEXT,
+    cover_url            TEXT,
     bio                  TEXT,
 
     -- Perfil de ONG
@@ -78,7 +79,8 @@ CREATE TABLE IF NOT EXISTS users (
     CONSTRAINT chk_users_provider            CHECK (provider IN ('LOCAL', 'GOOGLE')),
     CONSTRAINT chk_users_ngo_has_cnpj        CHECK (user_type <> 'NGO' OR cnpj IS NOT NULL),
     CONSTRAINT chk_users_local_has_password  CHECK (provider <> 'LOCAL' OR password IS NOT NULL),
-    CONSTRAINT chk_users_founded_year        CHECK (founded_year IS NULL OR (user_type = 'NGO' AND founded_year >= 1800))
+    CONSTRAINT chk_users_founded_year        CHECK (founded_year IS NULL OR (user_type = 'NGO' AND founded_year >= 1800)),
+    CONSTRAINT chk_users_cover_only_ngo      CHECK (cover_url IS NULL OR user_type = 'NGO')
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_user_type ON users (user_type);
@@ -89,6 +91,7 @@ COMMENT ON COLUMN users.active              IS 'false = conta suspensa pela mode
 COMMENT ON COLUMN users.moderated_at        IS 'Última edição do perfil feita pelo admin (nulo se nunca houve)';
 COMMENT ON COLUMN users.moderated_by        IS 'O admin que fez a última edição do perfil';
 COMMENT ON COLUMN users.photo_url           IS 'URL do avatar ou data URL da imagem comprimida no frontend (enquanto não há upload próprio)';
+COMMENT ON COLUMN users.cover_url           IS 'Banner do perfil público — só ONG; URL ou data URL comprimida no frontend (até 600.000 caracteres)';
 COMMENT ON COLUMN users.bio                 IS 'Bio do usuário comum (cuidadores autônomos) ou descrição da ONG';
 COMMENT ON COLUMN users.cnpj                IS 'Apenas os 14 dígitos — obrigatório quando user_type = NGO';
 COMMENT ON COLUMN users.is_verified         IS 'Selo de ONG verificada — toda ONG nasce com ele (sem etapa de aprovação)';
