@@ -1,10 +1,12 @@
 package com.aucolher.api.user;
 
 import com.aucolher.api.shared.exception.BusinessException;
+import com.aucolher.api.shared.exception.ConflictException;
 import com.aucolher.api.shared.exception.ResourceNotFoundException;
 import com.aucolher.api.user.dto.ProfileUpdateDTO;
 import com.aucolher.api.user.dto.PublicProfileDTO;
 import com.aucolher.api.user.dto.UserResponseDTO;
+import com.aucolher.api.user.entity.AuthProvider;
 import com.aucolher.api.user.entity.VisitingHour;
 import com.aucolher.api.user.entity.TeamMember;
 import com.aucolher.api.user.entity.UserType;
@@ -40,13 +42,16 @@ public class UserService {
 
     /**
      * Perfil público de qualquer conta ativa. Admin não tem perfil público, e
-     * conta desativada some do site: os dois casos respondem 404, como um id
-     * que não existe.
+     * conta banida some do site: os dois casos respondem 404, como um id que
+     * não existe. O admin ainda vê o perfil banido (com `active: false`), para
+     * conferir e reativar a conta.
+     *
+     * @param viewerEmail e-mail de quem está vendo, ou null se não estiver logado
      */
     @Transactional(readOnly = true)
-    public PublicProfileDTO getPublicProfile(Long id) {
+    public PublicProfileDTO getPublicProfile(Long id, String viewerEmail) {
         return userRepository.findById(id)
-                .filter(user -> Boolean.TRUE.equals(user.getActive()))
+                .filter(user -> Boolean.TRUE.equals(user.getActive()) || isAdmin(viewerEmail))
                 .filter(user -> user.getUserType() != UserType.ADMIN)
                 .map(PublicProfileDTO::from)
                 .orElseThrow(() -> new ResourceNotFoundException("Perfil não encontrado"));
@@ -61,7 +66,50 @@ public class UserService {
     public UserResponseDTO updateProfile(String email, ProfileUpdateDTO dto) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new BusinessException("Usuário não encontrado"));
+        applyProfile(user, dto);
+        return UserResponseDTO.from(user);
+    }
 
+    /** Moderação: a conta inteira de uma pessoa ou ONG, com o e-mail de login, para o admin editar. */
+    @Transactional(readOnly = true)
+    public User findForModeration(Long id) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Conta não encontrada."));
+        if (user.getUserType() == UserType.ADMIN) {
+            throw new BusinessException("Contas de admin não são editadas pelo painel.");
+        }
+        return user;
+    }
+
+    /**
+     * Moderação: o admin edita o perfil de outra conta (as mesmas regras de
+     * "Minha conta") e, se preciso, o e-mail de login. Trocar o e-mail
+     * derruba a sessão da conta (o token é pelo e-mail): ela entra de novo
+     * com o e-mail novo. Conta Google não troca de e-mail, porque o próximo
+     * login pelo Google criaria outra conta.
+     */
+    @Transactional
+    public User updateByModeration(Long id, String email, ProfileUpdateDTO dto, Long adminId) {
+        User user = findForModeration(id);
+        changeEmail(user, email);
+        applyProfile(user, dto);
+        user.markModeratedBy(adminId);
+        return user;
+    }
+
+    private void changeEmail(User user, String email) {
+        if (email.equals(user.getEmail())) return;
+        if (user.getProvider() == AuthProvider.GOOGLE) {
+            throw new BusinessException("Esta conta entra pelo Google: o e-mail vem do Google e não pode ser alterado.");
+        }
+        if (userRepository.existsByEmail(email)) {
+            throw new ConflictException("Este e-mail já está em uso por outra conta.");
+        }
+        user.setEmail(email);
+    }
+
+    /** Substitui o perfil editável (o mesmo para a própria conta e para a moderação). */
+    private void applyProfile(User user, ProfileUpdateDTO dto) {
         user.setName(dto.name());
         user.setPhotoUrl(dto.photoUrl());
         user.setBio(dto.bio());
@@ -72,8 +120,6 @@ public class UserService {
         if (user.getUserType() == UserType.NGO) {
             updateNgoProfile(user, dto);
         }
-
-        return UserResponseDTO.from(user);
     }
 
     private void updateNgoProfile(User user, ProfileUpdateDTO dto) {
@@ -98,5 +144,11 @@ public class UserService {
 
         user.getVisitingHours().clear();
         dto.visitingHours().forEach(slot -> user.getVisitingHours().add(new VisitingHour(slot.days(), slot.hours())));
+    }
+
+    private boolean isAdmin(String email) {
+        return email != null && userRepository.findByEmail(email)
+                .map(user -> user.getUserType() == UserType.ADMIN)
+                .orElse(false);
     }
 }

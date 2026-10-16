@@ -83,10 +83,24 @@ public class Event {
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    /** Última edição feita pelo admin (nula se nunca houve): o dono vê "Editado pela moderação". */
+    @Column(name = "moderated_at")
+    private LocalDateTime moderatedAt;
+
+    /** O admin que fez essa edição (só o id, como nas denúncias). */
+    @Column(name = "moderated_by")
+    private Long moderatedBy;
+
     @PrePersist
     void onCreate() {
         if (createdAt == null) {
             createdAt = LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS);
         }
+    }
+
+    /** O admin editou o conteúdo de outra pessoa: fica registrado quando e quem. */
+    public void markModeratedBy(Long adminId) {
+        moderatedAt = LocalDateTime.now();
+        moderatedBy = adminId;
     }
 }

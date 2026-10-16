@@ -1,11 +1,17 @@
 package com.aucolher.api.admin;
 
 import com.aucolher.api.admin.dto.AdminUserDTO;
+import com.aucolher.api.admin.dto.AdminUserProfileDTO;
+import com.aucolher.api.admin.dto.AdminUserUpdateDTO;
 import com.aucolher.api.adoption.AdoptionRequestService;
 import com.aucolher.api.adoption.entity.CancelReason;
 import com.aucolher.api.animal.AnimalRepository;
 import com.aucolher.api.animal.AnimalService;
+import com.aucolher.api.animal.dto.AnimalDetailDTO;
+import com.aucolher.api.animal.dto.AnimalRequestDTO;
 import com.aucolher.api.event.EventService;
+import com.aucolher.api.event.dto.EventRequestDTO;
+import com.aucolher.api.event.dto.EventResponseDTO;
 import com.aucolher.api.report.ReportService;
 import com.aucolher.api.report.dto.ReportDTO;
 import com.aucolher.api.report.entity.Report;
@@ -14,6 +20,7 @@ import com.aucolher.api.report.entity.ReportTargetType;
 import com.aucolher.api.shared.exception.BusinessException;
 import com.aucolher.api.shared.exception.ResourceNotFoundException;
 import com.aucolher.api.user.UserRepository;
+import com.aucolher.api.user.UserService;
 import com.aucolher.api.user.entity.User;
 import com.aucolher.api.user.entity.UserType;
 import lombok.RequiredArgsConstructor;
@@ -41,6 +48,31 @@ public class ModerationService {
     private final EventService eventService;
     private final ReportService reportService;
     private final AdoptionRequestService requestService;
+    private final UserService userService;
+
+    // ===================== Edição (o conteúdo segue em nome do dono) =====================
+
+    /** A conta inteira de uma pessoa ou ONG, com o e-mail de login, para o formulário de edição. */
+    @Transactional(readOnly = true)
+    public AdminUserProfileDTO getUser(Long userId) {
+        return AdminUserProfileDTO.from(userService.findForModeration(userId));
+    }
+
+    @Transactional
+    public AdminUserProfileDTO updateUser(Long userId, AdminUserUpdateDTO body, String adminEmail) {
+        return AdminUserProfileDTO.from(
+                userService.updateByModeration(userId, body.email(), body.profile(), findAdmin(adminEmail).getId()));
+    }
+
+    @Transactional
+    public AnimalDetailDTO updateAnimal(Long animalId, AnimalRequestDTO body, String adminEmail) {
+        return animalService.updateByModeration(animalId, body, findAdmin(adminEmail).getId());
+    }
+
+    @Transactional
+    public EventResponseDTO updateEvent(Long eventId, EventRequestDTO body, String adminEmail) {
+        return eventService.updateByModeration(eventId, body, findAdmin(adminEmail).getId());
+    }
 
     /** Banir (`active: false`) ou reativar (`active: true`) uma conta direto da lista do admin. */
     @Transactional

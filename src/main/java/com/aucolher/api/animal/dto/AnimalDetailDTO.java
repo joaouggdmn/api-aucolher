@@ -49,7 +49,9 @@ public record AnimalDetailDTO(
         AnimalOwnerDTO owner,
         Long originRequestId,
         LocalDateTime createdAt,
-        LocalDateTime updatedAt
+        LocalDateTime updatedAt,
+        // Última edição feita pelo admin (nula se nunca houve)
+        LocalDateTime moderatedAt
 ) {
 
     public static AnimalDetailDTO from(Animal animal) {
@@ -84,7 +86,8 @@ public record AnimalDetailDTO(
                 AnimalOwnerDTO.from(animal.getOwner()),
                 animal.getOriginRequestId(),
                 animal.getCreatedAt(),
-                animal.getUpdatedAt()
+                animal.getUpdatedAt(),
+                animal.getModeratedAt()
         );
     }
 }

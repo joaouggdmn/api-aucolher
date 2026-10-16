@@ -40,13 +40,17 @@ public class AnimalService {
     private final ApplicationEventPublisher eventPublisher;
 
     /**
-     * Qualquer conta (ONG ou usuário comum) pode anunciar, desde que tenha
-     * cidade e UF no perfil — é de lá que sai a localização do animal.
+     * Pessoa ou ONG pode anunciar (o admin não), desde que tenha cidade e UF
+     * no perfil — é de lá que sai a localização do animal.
      */
     @Transactional
     public AnimalDetailDTO create(String ownerEmail, AnimalRequestDTO dto) {
         User owner = userRepository.findByEmail(ownerEmail)
                 .orElseThrow(() -> new BusinessException("Usuário não encontrado"));
+        // O admin modera o site, mas não participa dele
+        if (owner.getUserType() == UserType.ADMIN) {
+            throw new ForbiddenException("Contas de admin não anunciam animais.");
+        }
         requireLocation(owner);
 
         Animal animal = new Animal();
@@ -98,11 +102,14 @@ public class AnimalService {
         return summarize(animalRepository.findByOwnerEmailOrderByCreatedAtDesc(ownerEmail));
     }
 
-    /** Animais disponíveis de um perfil público (conta banida não tem perfil público). */
+    /**
+     * Animais disponíveis de um perfil público. Conta banida não tem perfil
+     * público — só o admin ainda vê os animais dela.
+     */
     @Transactional(readOnly = true)
-    public List<AnimalSummaryDTO> listByOwner(Long userId) {
+    public List<AnimalSummaryDTO> listByOwner(Long userId, String viewerEmail) {
         userRepository.findById(userId)
-                .filter(owner -> Boolean.TRUE.equals(owner.getActive()))
+                .filter(owner -> Boolean.TRUE.equals(owner.getActive()) || isAdmin(viewerEmail))
                 .orElseThrow(() -> new ResourceNotFoundException("Usuário não encontrado"));
         return summarize(animalRepository.findByOwnerIdAndStatusOrderByCreatedAtDesc(userId, AnimalStatus.AVAILABLE));
     }
@@ -229,6 +236,23 @@ public class AnimalService {
             eventPublisher.publishEvent(new AnimalLeftListingEvent(animal.getId()));
         }
         animalRepository.saveAndFlush(animal);
+    }
+
+    /**
+     * Moderação: o admin edita o anúncio de outra pessoa. O anúncio continua
+     * em nome do dono (que vê "Editado pela moderação"); vale também para o
+     * adotado e o fora do ar, que seguem aparecendo para alguém. O removido
+     * não muda mais.
+     */
+    @Transactional
+    public AnimalDetailDTO updateByModeration(Long id, AnimalRequestDTO dto, Long adminId) {
+        Animal animal = findAnimal(id);
+        if (animal.getStatus() == AnimalStatus.REMOVED) {
+            throw new BusinessException("Este anúncio foi removido pela moderação e não pode mais ser alterado.");
+        }
+        fill(animal, dto);
+        animal.markModeratedBy(adminId);
+        return saveAndRespond(animal);
     }
 
     /**
