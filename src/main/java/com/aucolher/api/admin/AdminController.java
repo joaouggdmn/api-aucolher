@@ -3,11 +3,17 @@ package com.aucolher.api.admin;
 import com.aucolher.api.admin.dto.AdminAnimalDTO;
 import com.aucolher.api.admin.dto.AdminStatsDTO;
 import com.aucolher.api.admin.dto.AdminUserDTO;
+import com.aucolher.api.admin.dto.AdminUserProfileDTO;
+import com.aucolher.api.admin.dto.AdminUserUpdateDTO;
+import com.aucolher.api.animal.dto.AnimalDetailDTO;
+import com.aucolher.api.animal.dto.AnimalRequestDTO;
+import com.aucolher.api.event.dto.EventRequestDTO;
 import com.aucolher.api.admin.dto.UserStatusDTO;
 import com.aucolher.api.event.EventService;
 import com.aucolher.api.event.dto.EventResponseDTO;
 import com.aucolher.api.report.ReportService;
 import com.aucolher.api.report.dto.ReportDTO;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -61,6 +67,35 @@ public class AdminController {
     @GetMapping("/reports")
     public ResponseEntity<List<ReportDTO>> listReports() {
         return ResponseEntity.ok(reportService.listAllForAdmin());
+    }
+
+    // ===================== Edição (o conteúdo segue em nome do dono) =====================
+
+    /** A conta inteira de uma pessoa ou ONG (com o e-mail de login), para editar. */
+    @GetMapping("/users/{id}")
+    public ResponseEntity<AdminUserProfileDTO> getUser(@PathVariable Long id) {
+        return ResponseEntity.ok(moderationService.getUser(id));
+    }
+
+    /** `{ "email": "...", "profile": { ...o mesmo corpo de PUT /api/users/me } }` */
+    @PutMapping("/users/{id}")
+    public ResponseEntity<AdminUserProfileDTO> updateUser(@PathVariable Long id, @Valid @RequestBody AdminUserUpdateDTO body,
+                                                          @AuthenticationPrincipal UserDetails admin) {
+        return ResponseEntity.ok(moderationService.updateUser(id, body, admin.getUsername()));
+    }
+
+    /** O mesmo corpo de PUT /api/animals/{id}. */
+    @PutMapping("/animals/{id}")
+    public ResponseEntity<AnimalDetailDTO> updateAnimal(@PathVariable Long id, @Valid @RequestBody AnimalRequestDTO body,
+                                                        @AuthenticationPrincipal UserDetails admin) {
+        return ResponseEntity.ok(moderationService.updateAnimal(id, body, admin.getUsername()));
+    }
+
+    /** O mesmo corpo de PUT /api/events/{id}. */
+    @PutMapping("/events/{id}")
+    public ResponseEntity<EventResponseDTO> updateEvent(@PathVariable Long id, @Valid @RequestBody EventRequestDTO body,
+                                                        @AuthenticationPrincipal UserDetails admin) {
+        return ResponseEntity.ok(moderationService.updateEvent(id, body, admin.getUsername()));
     }
 
     // ===================== Moderação =====================

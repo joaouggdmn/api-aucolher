@@ -43,7 +43,10 @@ public record UserResponseDTO(
         String complement,
         String district,
         String city,
-        String state
+        String state,
+
+        // Última edição feita pelo admin (nula se nunca houve)
+        LocalDateTime moderatedAt
 ) {
 
     public static UserResponseDTO from(User user) {
@@ -70,7 +73,8 @@ public record UserResponseDTO(
                 user.getComplement(),
                 user.getDistrict(),
                 user.getCity(),
-                user.getState()
+                user.getState(),
+                user.getModeratedAt()
         );
     }
 }

@@ -130,7 +130,7 @@ class AnimalServiceTest {
     void unknownProfileReturns404() {
         when(userRepository.findById(99L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> animalService.listByOwner(99L))
+        assertThatThrownBy(() -> animalService.listByOwner(99L, null))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 
@@ -142,8 +142,20 @@ class AnimalServiceTest {
         banned.setActive(false);
         when(userRepository.findById(1L)).thenReturn(Optional.of(banned));
 
-        assertThatThrownBy(() -> animalService.listByOwner(1L))
+        assertThatThrownBy(() -> animalService.listByOwner(1L, null))
                 .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void adminStillSeesTheAnimalsOfABannedOwner() {
+        User banned = user(1L, OWNER_EMAIL);
+        banned.setActive(false);
+        when(userRepository.findById(1L)).thenReturn(Optional.of(banned));
+        when(userRepository.findByEmail("admin@email.com")).thenReturn(Optional.of(
+                User.builder().id(9L).email("admin@email.com").userType(UserType.ADMIN).build()));
+        when(animalRepository.findByOwnerIdAndStatusOrderByCreatedAtDesc(1L, AnimalStatus.AVAILABLE)).thenReturn(List.of());
+
+        assertThat(animalService.listByOwner(1L, "admin@email.com")).isEmpty();
     }
 
     @Test

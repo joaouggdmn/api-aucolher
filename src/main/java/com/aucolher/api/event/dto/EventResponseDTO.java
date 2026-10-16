@@ -28,6 +28,7 @@ public record EventResponseDTO(
         String status,
         LocalDateTime createdAt,
         boolean removedByModeration,
+        LocalDateTime moderatedAt,
         NgoSummaryDTO ngo
 ) {
     public static EventResponseDTO from(Event e, long attendeesCount, NgoSummaryDTO ngo) {
@@ -36,6 +37,7 @@ public record EventResponseDTO(
                 e.getDate(), e.getStartTime(), e.getEndTime(), e.getVenueName(),
                 e.getCep(), e.getStreet(), e.getNumber(), e.getComplement(), e.getDistrict(),
                 e.getCity(), e.getState(), e.getCapacity(), attendeesCount,
-                e.getCoverUrl(), e.getStatus().name(), e.getCreatedAt(), e.isRemovedByModeration(), ngo);
+                e.getCoverUrl(), e.getStatus().name(), e.getCreatedAt(), e.isRemovedByModeration(),
+                e.getModeratedAt(), ngo);
     }
 }

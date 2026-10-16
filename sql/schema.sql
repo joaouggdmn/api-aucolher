@@ -48,6 +48,8 @@ CREATE TABLE IF NOT EXISTS users (
     provider             VARCHAR(20)   NOT NULL DEFAULT 'LOCAL',
     active               BOOLEAN       NOT NULL DEFAULT TRUE,
     created_at           TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    moderated_at         TIMESTAMP,
+    moderated_by         BIGINT        REFERENCES users (id) ON DELETE SET NULL,
 
     -- Perfil (comum e ONG)
     photo_url            TEXT,
@@ -84,6 +86,8 @@ CREATE INDEX IF NOT EXISTS idx_users_user_type ON users (user_type);
 COMMENT ON TABLE  users                     IS 'Contas da plataforma: ONGs/abrigos, usuários comuns e administradores';
 COMMENT ON COLUMN users.password            IS 'Hash BCrypt — nulo para contas criadas via OAuth2 (Google)';
 COMMENT ON COLUMN users.active              IS 'false = conta suspensa pela moderação: não entra e o conteúdo some das rotas públicas';
+COMMENT ON COLUMN users.moderated_at        IS 'Última edição do perfil feita pelo admin (nulo se nunca houve)';
+COMMENT ON COLUMN users.moderated_by        IS 'O admin que fez a última edição do perfil';
 COMMENT ON COLUMN users.photo_url           IS 'URL do avatar ou data URL da imagem comprimida no frontend (enquanto não há upload próprio)';
 COMMENT ON COLUMN users.bio                 IS 'Bio do usuário comum (cuidadores autônomos) ou descrição da ONG';
 COMMENT ON COLUMN users.cnpj                IS 'Apenas os 14 dígitos — obrigatório quando user_type = NGO';
@@ -164,6 +168,8 @@ CREATE TABLE IF NOT EXISTS animals (
     status               VARCHAR(20)   NOT NULL DEFAULT 'AVAILABLE',
     created_at           TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at           TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    moderated_at         TIMESTAMP,
+    moderated_by         BIGINT        REFERENCES users (id) ON DELETE SET NULL,
 
     CONSTRAINT chk_animals_species      CHECK (species IN ('DOG', 'CAT', 'OTHER')),
     CONSTRAINT chk_animals_sex          CHECK (sex IN ('MALE', 'FEMALE')),
@@ -342,6 +348,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_animals_origin_request ON animals (origin_r
     WHERE origin_request_id IS NOT NULL;
 
 COMMENT ON COLUMN animals.origin_request_id IS 'Anúncio republicado pelo adotante: o pedido de adoção de onde ele veio (nulo nos demais)';
+COMMENT ON COLUMN animals.moderated_at IS 'Última edição do anúncio feita pelo admin (nulo se nunca houve)';
+COMMENT ON COLUMN animals.moderated_by IS 'O admin que fez a última edição do anúncio';
 
 -- ------------------------------------------------------------
 -- adoption_reviews — avaliações depois de uma adoção concluída.
@@ -392,11 +400,15 @@ CREATE TABLE IF NOT EXISTS events (
     status       VARCHAR(20)   NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'CANCELLED')),
     created_at   TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     removed_by_moderation BOOLEAN NOT NULL DEFAULT FALSE,
+    moderated_at TIMESTAMP,
+    moderated_by BIGINT        REFERENCES users (id) ON DELETE SET NULL,
     CHECK (end_time IS NULL OR end_time > start_time),
     CONSTRAINT chk_events_removed_by_moderation CHECK (NOT removed_by_moderation OR status = 'CANCELLED')
 );
 
 COMMENT ON COLUMN events.removed_by_moderation IS 'Cancelado pelo admin (sempre com status CANCELLED)';
+COMMENT ON COLUMN events.moderated_at  IS 'Última edição do evento feita pelo admin (nulo se nunca houve)';
+COMMENT ON COLUMN events.moderated_by  IS 'O admin que fez a última edição do evento';
 
 CREATE INDEX IF NOT EXISTS idx_events_ngo ON events (ngo_id);
 CREATE INDEX IF NOT EXISTS idx_events_status_date ON events (status, date);

@@ -44,7 +44,10 @@ public record PublicProfileDTO(
         String complement,
         String district,
         String city,
-        String state
+        String state,
+
+        // false = conta banida pela moderação (só o admin chega a ver)
+        boolean active
 ) {
 
     public static PublicProfileDTO from(User user) {
@@ -71,7 +74,8 @@ public record PublicProfileDTO(
                 ngo ? user.getComplement() : null,
                 ngo ? user.getDistrict() : null,
                 user.getCity(),
-                user.getState()
+                user.getState(),
+                Boolean.TRUE.equals(user.getActive())
         );
     }
 }

@@ -107,11 +107,28 @@ public class EventService {
         User user = currentUser(auth);
         Event event = lockActive(id);                 // 404
         requireOwner(event, user);                    // 403
+        return save(event, req);
+    }
+
+    /**
+     * Moderação: o admin edita o evento de uma ONG, com as mesmas regras dela
+     * (só ativo e que ainda não aconteceu). O evento continua em nome da ONG,
+     * e fica registrado que a moderação o editou.
+     */
+    @Transactional
+    public EventResponseDTO updateByModeration(Long id, EventRequestDTO req, Long adminId) {
+        Event event = lockActive(id);                 // 404
+        event.markModeratedBy(adminId);
+        return save(event, req);
+    }
+
+    /** Validação e gravação comuns à ONG dona e ao admin. */
+    private EventResponseDTO save(Event event, EventRequestDTO req) {
         if (isPast(event)) {                          // 400
             throw new BusinessException("Eventos que já aconteceram não podem ser editados.");
         }
         validate(req);
-        long confirmed = attendances.countByEventId(id);
+        long confirmed = attendances.countByEventId(event.getId());
         if (req.capacity() != null && req.capacity() < confirmed) {
             throw new BusinessException(
                     "A capacidade não pode ser menor que o número de confirmados (" + confirmed + ").");
@@ -153,6 +170,7 @@ public class EventService {
     @Transactional
     public EventResponseDTO confirmAttendance(Long id, Authentication auth) {
         User user = currentUser(auth);
+        requireNotAdmin(user);
         Event event = lockExisting(id);               // trava a linha: vagas sem corrida
         requireActiveNgo(event);
         checkAttendanceRules(event, user);
@@ -170,6 +188,7 @@ public class EventService {
     @Transactional
     public EventResponseDTO cancelAttendance(Long id, Authentication auth) {
         User user = currentUser(auth);
+        requireNotAdmin(user);
         Event event = lockExisting(id);
         requireActiveNgo(event);
         checkAttendanceRules(event, user);
@@ -269,6 +288,13 @@ public class EventService {
     private void requireNgo(User user, String message) {
         if (!isNgo(user)) {
             throw new ForbiddenException(message);
+        }
+    }
+
+    /** O admin modera o site, mas não participa dele. */
+    private void requireNotAdmin(User user) {
+        if (user.getUserType() == UserType.ADMIN) {
+            throw new ForbiddenException("Contas de admin não confirmam presença em eventos.");
         }
     }
 
