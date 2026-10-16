@@ -212,7 +212,7 @@ class ModerationEditsTest {
     }
 
     private static ProfileUpdateDTO profile(String name) {
-        return new ProfileUpdateDTO(name, null, null, null, null, null, null, List.of(), List.of(),
+        return new ProfileUpdateDTO(name, null, null, null, null, null, null, null, List.of(), List.of(),
                 null, null, null, null, null, "Laguna", "SC");
     }
 }
