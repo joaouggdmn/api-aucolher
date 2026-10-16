@@ -27,6 +27,11 @@ public record ProfileUpdateDTO(
         @Pattern(regexp = PhotoUrl.FORMAT, message = "Foto em formato inválido")
         String photoUrl,
 
+        // Banner do perfil público: só ONG (conferido na Service)
+        @Size(max = PhotoUrl.COVER_MAX_LENGTH, message = "O banner é grande demais.")
+        @Pattern(regexp = PhotoUrl.FORMAT, message = "Envie o banner como imagem JPG, PNG ou WebP.")
+        String coverUrl,
+
         @Size(max = 500, message = "A bio deve ter no máximo 500 caracteres")
         String bio,
 
@@ -84,6 +89,7 @@ public record ProfileUpdateDTO(
     public ProfileUpdateDTO {
         name = Sanitizer.text(name);
         photoUrl = Sanitizer.text(photoUrl);
+        coverUrl = Sanitizer.text(coverUrl);
         bio = Sanitizer.text(bio);
         instagram = Sanitizer.withoutAt(instagram);
         twitter = Sanitizer.withoutAt(twitter);

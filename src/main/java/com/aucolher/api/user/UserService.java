@@ -60,7 +60,7 @@ public class UserService {
     /**
      * Substitui o perfil editável da conta autenticada. Usuário comum grava só
      * nome, foto, bio e CEP/cidade/UF; ONG grava também o perfil institucional
-     * e o endereço completo, que continua obrigatório.
+     * (com o banner) e o endereço completo, que continua obrigatório.
      */
     @Transactional
     public UserResponseDTO updateProfile(String email, ProfileUpdateDTO dto) {
@@ -110,6 +110,10 @@ public class UserService {
 
     /** Substitui o perfil editável (o mesmo para a própria conta e para a moderação). */
     private void applyProfile(User user, ProfileUpdateDTO dto) {
+        if (user.getUserType() != UserType.NGO && dto.coverUrl() != null) {
+            throw new BusinessException("Só ONGs podem ter banner no perfil.");
+        }
+
         user.setName(dto.name());
         user.setPhotoUrl(dto.photoUrl());
         user.setBio(dto.bio());
@@ -129,6 +133,7 @@ public class UserService {
             throw new BusinessException("O endereço da ONG é obrigatório: informe CEP, logradouro, número, bairro, cidade e UF");
         }
 
+        user.setCoverUrl(dto.coverUrl());
         user.setInstagram(dto.instagram());
         user.setTwitter(dto.twitter());
         user.setFacebook(dto.facebook());
