@@ -80,6 +80,10 @@ public class User {
     @Column(name = "photo_url", columnDefinition = "TEXT")
     private String photoUrl;
 
+    /** Banner do perfil público — só ONG (constraint chk_users_cover_only_ngo). */
+    @Column(name = "cover_url", columnDefinition = "TEXT")
+    private String coverUrl;
+
     @Column(columnDefinition = "TEXT")
     private String bio;
 

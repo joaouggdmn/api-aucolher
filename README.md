@@ -168,6 +168,16 @@ psql -U postgres -h localhost -d aucolher_db -f sql/migrations/014_reports_moder
 
 Pode ser repetida. **Campanhas:** a tabela `campaigns` ainda não existe no backend, então a 014 não mexe nela. Quem criar a tabela (migração 007) deve incluir `removed_by_moderation BOOLEAN NOT NULL DEFAULT FALSE` com `CHECK (NOT removed_by_moderation OR deleted)`.
 
+#### Banner da ONG (migração 008)
+
+A 008 acrescenta `users.cover_url`, o banner do perfil público. Só ONG pode ter (constraint `chk_users_cover_only_ngo`). Por segurança, ela também apaga a antiga coluna `telefone_whatsapp`, se o banco ainda veio do `adocao_db`: o contato acontece pelo chat do pedido e pelas redes da ONG. Sem ela a API não sobe (`Schema-validation: missing column [cover_url]`):
+
+```bash
+psql -U postgres -h localhost -d aucolher_db -f sql/migrations/008_ngo_cover.sql
+```
+
+Pode ser repetida.
+
 #### Edição pela moderação (migração 016)
 
 A 016 acrescenta `moderated_at` e `moderated_by` em `users`, `animals` e `events`: quando o admin edita a conta, o anúncio ou o evento de outra pessoa, fica registrado quando e quem. Sem ela a API não sobe (`Schema-validation: missing column [moderated_at]`):
@@ -320,6 +330,7 @@ Todas as respostas de autenticação seguem o formato:
     "provider": "LOCAL",
     "createdAt": "2026-09-20T18:14:01.173",
     "photoUrl": null,
+    "coverUrl": null,
     "bio": null,
     "cnpj": null,
     "isVerified": false,
@@ -353,6 +364,7 @@ Content-Type: application/json
 {
   "name": "ONG Amigos dos Animais",
   "photoUrl": null,
+  "coverUrl": "data:image/jpeg;base64,...",
   "bio": "Resgatamos e encontramos lares para cães e gatos.",
   "instagram": "amigosdosanimais",
   "twitter": null,
@@ -370,14 +382,16 @@ Content-Type: application/json
 }
 ```
 
-A conta editada é sempre a do token — não há id na rota. É uma substituição completa: campo opcional que não vier é apagado, e `team`/`visitingHours` substituem as listas inteiras (na ordem enviada). Usuário comum grava só `name`, `photoUrl`, `bio`, `cep`, `city` e `state`; o resto é ignorado. Para ONG o endereço continua obrigatório. E-mail, senha e CNPJ não mudam por aqui. Responde com o mesmo objeto `user` das rotas de autenticação — que também traz `team` e `visitingHours`, para o frontend não depender de nada guardado no navegador.
+A conta editada é sempre a do token — não há id na rota. É uma substituição completa: campo opcional que não vier é apagado, e `team`/`visitingHours` substituem as listas inteiras (na ordem enviada). Usuário comum grava só `name`, `photoUrl`, `bio`, `cep`, `city` e `state`; o resto é ignorado. Para ONG o endereço continua obrigatório.
+
+`coverUrl` é o **banner** do perfil público, **só para ONG** e opcional: uma URL `http(s)://` ou um data URL `data:image/(jpeg|png|webp);base64,...` com até 600.000 caracteres. Ausente ou `null` remove o banner (por isso o frontend sempre manda o valor atual). Erros (400): conta de usuário comum com banner → "Só ONGs podem ter banner no perfil."; formato inválido → "Envie o banner como imagem JPG, PNG ou WebP."; grande demais → "O banner é grande demais.". E-mail, senha e CNPJ não mudam por aqui. Responde com o mesmo objeto `user` das rotas de autenticação — que também traz `team` e `visitingHours`, para o frontend não depender de nada guardado no navegador.
 
 ### Perfil público
 ```
 GET /api/users/{id}/public-profile
 ```
 
-Público, sem login: é a página de perfil de uma ONG ou pessoa. Traz os mesmos campos do objeto `user` acima, menos `provider`.
+Público, sem login: é a página de perfil de uma ONG ou pessoa. Traz os mesmos campos do objeto `user` acima, menos `provider`. `coverUrl` vem sempre `null` para pessoa.
 - ONG: perfil institucional completo, com endereço da sede, equipe, horários de visita e o `email` de login como contato público.
 - Pessoa: só `city` e `state` do endereço; `email`, CEP, rua, número e os campos de ONG vêm nulos.
 - Conta inexistente, desativada ou admin responde 404.

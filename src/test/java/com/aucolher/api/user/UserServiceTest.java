@@ -1,7 +1,10 @@
 package com.aucolher.api.user;
 
+import com.aucolher.api.shared.exception.BusinessException;
 import com.aucolher.api.shared.exception.ResourceNotFoundException;
+import com.aucolher.api.user.dto.ProfileUpdateDTO;
 import com.aucolher.api.user.dto.PublicProfileDTO;
+import com.aucolher.api.user.dto.UserResponseDTO;
 import com.aucolher.api.user.entity.User;
 import com.aucolher.api.user.entity.UserType;
 import org.junit.jupiter.api.Test;
@@ -10,13 +13,14 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
 
-/** Perfil público (GET /api/users/{id}/public-profile), com o banco simulado (Mockito). */
+/** Perfil público (GET /api/users/{id}/public-profile) e banner da ONG, com o banco simulado (Mockito). */
 @ExtendWith(MockitoExtension.class)
 class UserServiceTest {
 
@@ -25,6 +29,8 @@ class UserServiceTest {
 
     @InjectMocks
     private UserService userService;
+
+    private static final String BANNER = "data:image/jpeg;base64,AAAA";
 
     private User user(UserType type) {
         return User.builder()
@@ -94,5 +100,54 @@ class UserServiceTest {
         assertThat(userService.getPublicProfile(2L, "admin@email.com").active()).isFalse();
         assertThatThrownBy(() -> userService.getPublicProfile(2L, "person@email.com"))
                 .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void ngoSavesTheBannerAndShowsItOnThePublicProfile() {
+        User ngo = user(UserType.NGO);
+        when(userRepository.findByEmail("conta@email.com")).thenReturn(Optional.of(ngo));
+        when(userRepository.findById(7L)).thenReturn(Optional.of(ngo));
+
+        UserResponseDTO saved = userService.updateProfile("conta@email.com", profile(BANNER));
+
+        assertThat(saved.coverUrl()).isEqualTo(BANNER);
+        assertThat(userService.getPublicProfile(7L, null).coverUrl()).isEqualTo(BANNER);
+    }
+
+    @Test
+    void ngoRemovesTheBannerBySendingNoCover() {
+        User ngo = user(UserType.NGO);
+        ngo.setCoverUrl(BANNER);
+        when(userRepository.findByEmail("conta@email.com")).thenReturn(Optional.of(ngo));
+
+        assertThat(userService.updateProfile("conta@email.com", profile(null)).coverUrl()).isNull();
+    }
+
+    @Test
+    void personCannotHaveABanner() {
+        User person = user(UserType.PERSON);
+        when(userRepository.findByEmail("conta@email.com")).thenReturn(Optional.of(person));
+
+        assertThatThrownBy(() -> userService.updateProfile("conta@email.com", profile(BANNER)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Só ONGs podem ter banner no perfil.");
+        assertThat(person.getCoverUrl()).isNull();
+    }
+
+    @Test
+    void personPublicProfileNeverHasABanner() {
+        when(userRepository.findById(7L)).thenReturn(Optional.of(user(UserType.PERSON)));
+
+        assertThat(userService.getPublicProfile(7L, null).coverUrl()).isNull();
+    }
+
+    @Test
+    void blankBannerBecomesNull() {
+        assertThat(profile("   ").coverUrl()).isNull();
+    }
+
+    private static ProfileUpdateDTO profile(String coverUrl) {
+        return new ProfileUpdateDTO("Conta", null, coverUrl, null, "conta", null, null, null, List.of(), List.of(),
+                "88900000", "Rua A", "10", null, "Centro", "Araranguá", "SC");
     }
 }

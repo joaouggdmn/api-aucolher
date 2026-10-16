@@ -24,6 +24,7 @@ public record UserResponseDTO(
         AuthProvider provider,
         LocalDateTime createdAt, // base do "Membro desde [ano]" no perfil
         String photoUrl,
+        String coverUrl, // banner do perfil: só ONG, nulo para os outros
         String bio,
 
         // Perfil de ONG
@@ -58,6 +59,7 @@ public record UserResponseDTO(
                 user.getProvider(),
                 user.getCreatedAt(),
                 user.getPhotoUrl(),
+                user.getCoverUrl(),
                 user.getBio(),
                 user.getCnpj(),
                 user.getVerified(),
