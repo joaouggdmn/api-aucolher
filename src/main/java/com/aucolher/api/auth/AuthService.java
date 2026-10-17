@@ -1,9 +1,11 @@
 package com.aucolher.api.auth;
 
 import com.aucolher.api.auth.dto.AuthResponseDTO;
+import com.aucolher.api.auth.dto.GoogleExchangeDTO;
 import com.aucolher.api.auth.dto.NgoRegistrationDTO;
 import com.aucolher.api.auth.dto.PersonRegistrationDTO;
 import com.aucolher.api.auth.dto.LoginDTO;
+import com.aucolher.api.security.GoogleLoginCodeStore;
 import com.aucolher.api.security.JwtService;
 import com.aucolher.api.security.SuspendedAccount;
 import com.aucolher.api.shared.exception.BusinessException;
@@ -31,6 +33,9 @@ public class AuthService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final GoogleLoginCodeStore googleLoginCodeStore;
+
+    private static final String GOOGLE_CODE_EXPIRED = "O login com o Google expirou. Tente novamente.";
 
     @Transactional
     public AuthResponseDTO registerNgo(NgoRegistrationDTO dto) {
@@ -94,6 +99,24 @@ public class AuthService {
     @Transactional(readOnly = true)
     public AuthResponseDTO login(LoginDTO dto) {
         return buildResponse(authenticate(dto));
+    }
+
+    /**
+     * Segunda metade do login Google: troca o código de uso único (gerado no
+     * OAuth2AuthenticationSuccessHandler) pelo mesmo payload do login.
+     */
+    @Transactional(readOnly = true)
+    public AuthResponseDTO exchangeGoogleCode(GoogleExchangeDTO dto) {
+        User user = googleLoginCodeStore.consume(dto.code())
+                .flatMap(userRepository::findByEmail)
+                .orElseThrow(() -> new BusinessException(GOOGLE_CODE_EXPIRED));
+
+        // A conta pode ter sido banida entre o Google e a troca
+        if (!user.getActive()) {
+            throw new ForbiddenException(SuspendedAccount.MESSAGE);
+        }
+
+        return buildResponse(user);
     }
 
     private void ensureEmailAvailable(String email) {
