@@ -135,7 +135,8 @@ public class AdoptionRequestService {
      * partida certo — papel errado responde 403, status errado responde 400:
      * - dono: PENDING → ACCEPTED ou REJECTED; ACCEPTED → AWAITING_DELIVERY;
      *   ACCEPTED/AWAITING_DELIVERY → CANCELLED (desistiu);
-     * - adotante: AWAITING_DELIVERY → CONCLUDED; qualquer ativo → CANCELLED (desistiu).
+     * - adotante: AWAITING_DELIVERY → CONCLUDED; AWAITING_DELIVERY → ACCEPTED ("ainda não
+     *   recebi"); qualquer ativo → CANCELLED (desistiu).
      * Repetir o status atual não muda nada (clique duplo).
      */
     @Transactional
@@ -152,9 +153,15 @@ public class AdoptionRequestService {
 
         switch (target) {
             case ACCEPTED -> {
-                requireRole(isOwner, "Só o dono do animal pode aceitar o pedido");
-                requireStatus(request, "Só um pedido pendente pode ser aceito", AdoptionStatus.PENDING);
-                request.accept();
+                if (isAdopter && request.getStatus() == AdoptionStatus.AWAITING_DELIVERY) {
+                    // "Ainda não recebi": o dono confirmou a entrega, mas o pet não
+                    // chegou (engano ou golpe). O pedido volta a aceito e o chat reabre
+                    request.returnToAccepted();
+                } else {
+                    requireRole(isOwner, "Só o dono do animal pode aceitar o pedido");
+                    requireStatus(request, "Só um pedido pendente pode ser aceito", AdoptionStatus.PENDING);
+                    request.accept();
+                }
             }
             case REJECTED -> {
                 requireRole(isOwner, "Só o dono do animal pode recusar o pedido");

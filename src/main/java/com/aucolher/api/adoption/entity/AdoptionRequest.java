@@ -124,6 +124,11 @@ public class AdoptionRequest {
         status = AdoptionStatus.AWAITING_DELIVERY;
     }
 
+    /** "Ainda não recebi": a entrega volta a ser combinada no chat. */
+    public void returnToAccepted() {
+        status = AdoptionStatus.ACCEPTED;
+    }
+
     public void reject() {
         status = AdoptionStatus.REJECTED;
         closedAt = LocalDateTime.now();

@@ -77,6 +77,9 @@ class AdoptionTransitionsTest {
     @CsvSource({
             "PENDING, ACCEPTED, OWNER, OK",
             "PENDING, ACCEPTED, ADOPTER, 403",
+            "AWAITING_DELIVERY, ACCEPTED, ADOPTER, OK",
+            "AWAITING_DELIVERY, ACCEPTED, OWNER, 400",
+            "ACCEPTED, ACCEPTED, ADOPTER, OK",
             "PENDING, REJECTED, OWNER, OK",
             "PENDING, REJECTED, ADOPTER, 403",
             "ACCEPTED, REJECTED, OWNER, 400",
