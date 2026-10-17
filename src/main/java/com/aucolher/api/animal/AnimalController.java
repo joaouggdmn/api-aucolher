@@ -40,6 +40,12 @@ public class AnimalController {
         return ResponseEntity.ok(animalService.listAvailable(filter, page, size));
     }
 
+    /** Público: cidades que têm animal disponível, para o filtro de cidade da vitrine. */
+    @GetMapping("/animals/cities")
+    public ResponseEntity<List<String>> listCities() {
+        return ResponseEntity.ok(animalService.listAvailableCities());
+    }
+
     /** Todos os anúncios do usuário logado, em qualquer status ("Minha conta"). */
     @GetMapping("/animals/mine")
     public ResponseEntity<List<AnimalSummaryDTO>> listMine(@AuthenticationPrincipal UserDetails loggedUser) {
