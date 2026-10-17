@@ -28,6 +28,8 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
 
         String email = oAuth2User.getAttribute("email");
         String name = oAuth2User.getAttribute("name");
+        // Foto do Google só na criação: a conta existente mantém a dela
+        String picture = oAuth2User.getAttribute("picture");
 
         if (email == null) {
             throw new OAuth2AuthenticationException("Não foi possível obter o e-mail da conta Google");
@@ -41,6 +43,7 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
                     .userType(UserType.PERSON)
                     .provider(AuthProvider.GOOGLE)
                     .active(true)
+                    .photoUrl(picture)
                     .build();
             return userRepository.save(newUser);
         });
