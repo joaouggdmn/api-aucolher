@@ -1,6 +1,7 @@
 package com.aucolher.api.auth;
 
 import com.aucolher.api.auth.dto.AuthResponseDTO;
+import com.aucolher.api.auth.dto.GoogleExchangeDTO;
 import com.aucolher.api.auth.dto.NgoRegistrationDTO;
 import com.aucolher.api.auth.dto.PersonRegistrationDTO;
 import com.aucolher.api.auth.dto.LoginDTO;
@@ -34,5 +35,11 @@ public class AuthController {
     public ResponseEntity<AuthResponseDTO> login(@Valid @RequestBody LoginDTO dto) {
         AuthResponseDTO response = authService.login(dto);
         return ResponseEntity.ok(response);
+    }
+
+    /** Fim do login Google: troca o código de uso único pelo token (mesmo payload do login). */
+    @PostMapping("/google/exchange")
+    public ResponseEntity<AuthResponseDTO> exchangeGoogleCode(@Valid @RequestBody GoogleExchangeDTO dto) {
+        return ResponseEntity.ok(authService.exchangeGoogleCode(dto));
     }
 }
