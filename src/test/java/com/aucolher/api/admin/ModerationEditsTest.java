@@ -207,7 +207,7 @@ class ModerationEditsTest {
     }
 
     private static EventRequestDTO eventRequest(String title) {
-        return new EventRequestDTO(title, "Descrição", EventCategory.ADOPTION_FAIR, LocalDate.now().plusDays(3),
+        return new EventRequestDTO(title, "Descrição", EventCategory.ADOPTION_FAIR, null, LocalDate.now().plusDays(3),
                 LocalTime.of(10, 0), null, "Praça", null, "Rua A", null, null, null, "Tubarão", "SC", null, null);
     }
 
