@@ -34,6 +34,10 @@ public class Event {
     @Column(nullable = false, length = 20)
     private EventCategory category;
 
+    /** Nome livre da categoria, só quando category = OTHER. */
+    @Column(name = "custom_category", length = 30)
+    private String customCategory;
+
     @Column(name = "date", nullable = false)
     private LocalDate date;
 

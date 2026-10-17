@@ -40,6 +40,14 @@ public interface AnimalRepository extends JpaRepository<Animal, Long>, JpaSpecif
     @EntityGraph(attributePaths = "owner")
     List<Animal> findByStatusAndOwnerActiveTrueAndOwnerIdNot(AnimalStatus status, Long ownerId);
 
+    /**
+     * Cidades (do dono) que têm animal na vitrine, para o filtro de cidade:
+     * as mesmas regras base da listagem pública (disponível e conta ativa).
+     */
+    @Query("SELECT DISTINCT a.owner.city FROM Animal a WHERE a.status = :status AND a.owner.active = true "
+            + "AND a.owner.city IS NOT NULL AND a.owner.city <> '' ORDER BY a.owner.city")
+    List<String> findListedOwnerCities(AnimalStatus status);
+
     /** Anúncios de uma conta, em qualquer status (painel do admin). */
     long countByOwnerId(Long ownerId);
 

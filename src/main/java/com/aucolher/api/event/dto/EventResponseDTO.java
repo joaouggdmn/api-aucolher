@@ -11,6 +11,7 @@ public record EventResponseDTO(
         String title,
         String description,
         String category,
+        String customCategory,
         LocalDate date,
         LocalTime startTime,
         LocalTime endTime,
@@ -33,7 +34,7 @@ public record EventResponseDTO(
 ) {
     public static EventResponseDTO from(Event e, long attendeesCount, NgoSummaryDTO ngo) {
         return new EventResponseDTO(
-                e.getId(), e.getTitle(), e.getDescription(), e.getCategory().name(),
+                e.getId(), e.getTitle(), e.getDescription(), e.getCategory().name(), e.getCustomCategory(),
                 e.getDate(), e.getStartTime(), e.getEndTime(), e.getVenueName(),
                 e.getCep(), e.getStreet(), e.getNumber(), e.getComplement(), e.getDistrict(),
                 e.getCity(), e.getState(), e.getCapacity(), attendeesCount,

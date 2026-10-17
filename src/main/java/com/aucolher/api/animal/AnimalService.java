@@ -96,6 +96,12 @@ public class AnimalService {
         return PageDTO.from(result.map(animal -> summaries.get(animal.getId())));
     }
 
+    /** Cidades com animal na vitrine, em ordem alfabética (filtro de cidade da listagem). */
+    @Transactional(readOnly = true)
+    public List<String> listAvailableCities() {
+        return animalRepository.findListedOwnerCities(AnimalStatus.AVAILABLE);
+    }
+
     /** "Meus animais": todos os anúncios da conta logada, inclusive adotados e inativos. */
     @Transactional(readOnly = true)
     public List<AnimalSummaryDTO> listMine(String ownerEmail) {

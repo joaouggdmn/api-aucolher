@@ -3,6 +3,7 @@ package com.aucolher.api.event;
 import com.aucolher.api.event.dto.*;
 import com.aucolher.api.event.entity.Event;
 import com.aucolher.api.event.entity.EventAttendance;
+import com.aucolher.api.event.entity.EventCategory;
 import com.aucolher.api.event.entity.EventStatus;
 import com.aucolher.api.shared.exception.BusinessException;
 import com.aucolher.api.shared.exception.ForbiddenException;
@@ -216,6 +217,9 @@ public class EventService {
     }
 
     private void validate(EventRequestDTO req) {
+        if (req.category() == EventCategory.OTHER && req.customCategory() == null) {
+            throw new BusinessException("Dê um nome para a categoria.");
+        }
         if (req.endTime() != null && !req.endTime().isAfter(req.startTime())) {
             throw new BusinessException("O horário de término deve ser depois do início.");
         }
@@ -235,6 +239,7 @@ public class EventService {
         e.setTitle(r.title());
         e.setDescription(r.description());
         e.setCategory(r.category());
+        e.setCustomCategory(r.category() == EventCategory.OTHER ? r.customCategory() : null);
         e.setDate(r.date());
         e.setStartTime(r.startTime());
         e.setEndTime(r.endTime());
