@@ -81,7 +81,9 @@ src/main/java/com/aucolher/api/
     ├── JwtAuthenticationFilter.java        # Filtro que autentica requisições via Bearer token
     ├── CustomUserDetailsService.java
     ├── CustomOAuth2UserService.java        # Cria o usuário automaticamente no 1º login Google
-    └── OAuth2AuthenticationSuccessHandler.java  # Devolve JWT em JSON após login Google
+    ├── OAuth2AuthenticationSuccessHandler.java  # Volta ao frontend com um código de troca após login Google
+    ├── OAuth2AuthenticationFailureHandler.java  # Volta ao frontend com ?error=failed
+    └── GoogleLoginCodeStore.java           # Códigos de troca do login Google (uso único, 60 s)
 sql/schema.sql                              # Script de criação do banco aucolher_db + tabelas
 sql/migrations/                             # Atualizações para bancos criados por versões anteriores do script
 src/test/java/...                           # Testes (JUnit 5 + Mockito + MockMvc)
@@ -211,6 +213,7 @@ Depois de trazer as mudanças do Git, faça **Build → Rebuild Project** no Int
 | `JWT_SECRET`          | Chave HMAC dos tokens JWT (mínimo 32 caracteres) | — (sem padrão versionado) |
 | `JWT_EXPIRATION_MS`   | Validade do token em milissegundos           | `86400000` (24h)        |
 | `CORS_ALLOWED_ORIGINS`| Origens liberadas no CORS (separadas por vírgula) | `http://localhost:5173` |
+| `FRONTEND_URL`        | Para onde a API volta depois do login Google | `http://localhost:5173` |
 | `ADMIN_EMAIL`         | E-mail da conta admin criada ao subir        | — (sem padrão versionado) |
 | `ADMIN_PASSWORD`      | Senha da conta admin (mínimo 8 caracteres)   | — (sem padrão versionado) |
 | `ADMIN_NAME`          | Nome exibido da conta admin                  | `Administrador`         |
@@ -401,7 +404,25 @@ Público, sem login: é a página de perfil de uma ONG ou pessoa. Traz os mesmos
 ```
 GET /oauth2/authorization/google
 ```
-Redirecione o usuário para essa URL no navegador. Após o consentimento, o Spring Security completa o fluxo OAuth2; no primeiro acesso, `CustomOAuth2UserService` cria automaticamente o registro em `users` com `userType = PERSON` e `provider = GOOGLE`. Em seguida, `OAuth2AuthenticationSuccessHandler` devolve o mesmo formato de JSON (token + usuário) dos logins tradicionais.
+Redirecione o usuário para essa URL no navegador. Após o consentimento, o Spring Security completa o fluxo OAuth2. No primeiro acesso, `CustomOAuth2UserService` cria o registro em `users` com `userType = PERSON`, `provider = GOOGLE` e a foto do Google. Um e-mail que já tem conta entra nela.
+
+A API então **volta ao frontend** em `{FRONTEND_URL}/login/google`, com uma destas queries:
+- `?code=...`: um código de uso único, válido por 60 s;
+- `?error=suspended`: a conta foi banida;
+- `?error=failed`: a pessoa cancelou no Google ou houve erro.
+
+O token não vai na URL. O frontend troca o código:
+
+```
+POST /api/auth/google/exchange
+{ "code": "..." }
+```
+
+- **200:** o mesmo `AuthResponseDTO` do `POST /api/auth/login`;
+- **400:** código vazio, desconhecido, já usado ou vencido, com "O login com o Google expirou. Tente novamente.";
+- **403:** conta suspensa.
+
+Fluxo completo e como criar as credenciais: `docs/entrega-final/api-login-google.md` no frontend.
 
 ### Animais
 
