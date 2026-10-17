@@ -2,6 +2,7 @@ package com.aucolher.api.config;
 
 import com.aucolher.api.security.CustomOAuth2UserService;
 import com.aucolher.api.security.JwtAuthenticationFilter;
+import com.aucolher.api.security.OAuth2AuthenticationFailureHandler;
 import com.aucolher.api.security.OAuth2AuthenticationSuccessHandler;
 import jakarta.servlet.DispatcherType;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +32,7 @@ public class SecurityConfig {
 
     private final CustomOAuth2UserService customOAuth2UserService;
     private final OAuth2AuthenticationSuccessHandler oAuth2AuthenticationSuccessHandler;
+    private final OAuth2AuthenticationFailureHandler oAuth2AuthenticationFailureHandler;
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
     /** Origens liberadas no CORS — o endereço do frontend, por ambiente. */
@@ -84,7 +86,9 @@ public class SecurityConfig {
             .exceptionHandling(ex -> ex.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
             .oauth2Login(oauth2 -> oauth2
                 .userInfoEndpoint(userInfo -> userInfo.userService(customOAuth2UserService))
+                // Os dois voltam para o frontend em /login/google (com o código ou o erro)
                 .successHandler(oAuth2AuthenticationSuccessHandler)
+                .failureHandler(oAuth2AuthenticationFailureHandler)
             )
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
