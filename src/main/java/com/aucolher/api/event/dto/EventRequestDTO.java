@@ -19,6 +19,10 @@ public record EventRequestDTO(
         @NotNull(message = "Escolha uma categoria.")
         EventCategory category,
 
+        /** Só com category = OTHER; nas outras o service grava null. */
+        @Size(max = 30, message = "O nome da categoria deve ter no máximo 30 caracteres.")
+        String customCategory,
+
         @NotNull(message = "Informe a data do evento.")
         @FutureOrPresent(message = "A data do evento não pode estar no passado.")
         LocalDate date,
@@ -65,6 +69,7 @@ public record EventRequestDTO(
     public EventRequestDTO {
         title = clean(title);
         description = clean(description);
+        customCategory = clean(customCategory);
         venueName = clean(venueName);
         cep = cep == null ? null : clean(cep.replaceAll("\\D", ""));
         street = clean(street);
