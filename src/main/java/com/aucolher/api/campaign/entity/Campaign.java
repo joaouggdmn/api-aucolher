@@ -69,6 +69,15 @@ public class Campaign {
     @Column(name = "closed_at")
     private LocalDateTime closedAt;
 
+    /** Encerrada = status CLOSED, ou prazo vencido (calculado na leitura, sem job agendado). */
+    public boolean isClosed() {
+        return status == CampaignStatus.CLOSED || deadlinePassed();
+    }
+
+    public boolean deadlinePassed() {
+        return deadline != null && deadline.isBefore(LocalDate.now());
+    }
+
     /** O admin editou a campanha de uma ONG: fica registrado quando e quem. */
     public void markModeratedBy(Long adminId) {
         moderatedAt = LocalDateTime.now();

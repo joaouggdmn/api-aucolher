@@ -39,6 +39,9 @@ public interface CampaignRepository extends JpaRepository<Campaign, Long> {
             + "order by c.createdAt desc")
     List<Campaign> findPublicClosedByNgo(@Param("ngoId") Long ngoId, @Param("today") LocalDate today);
 
+    /** Painel do admin e números da Visão geral: todas, inclusive as excluídas. */
+    List<Campaign> findAllByOrderByCreatedAtDesc();
+
     /** "Minhas campanhas": ativas e encerradas da ONG, sem as excluídas. */
     List<Campaign> findByNgoIdAndDeletedFalseOrderByCreatedAtDesc(Long ngoId);
 

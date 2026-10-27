@@ -7,15 +7,21 @@ import com.aucolher.api.adoption.entity.ReturnReason;
 import com.aucolher.api.animal.entity.Animal;
 import com.aucolher.api.animal.entity.AnimalStatus;
 import com.aucolher.api.animal.entity.Species;
+import com.aucolher.api.campaign.entity.Campaign;
+import com.aucolher.api.campaign.entity.CampaignStatus;
+import com.aucolher.api.donation.entity.Donation;
+import com.aucolher.api.donation.entity.DonationStatus;
 import com.aucolher.api.user.entity.User;
 import com.aucolher.api.user.entity.UserType;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -124,7 +130,84 @@ class AdminStatsServiceTest {
                 .containsExactly(new RankedNgo(2L, "Conta 2", 0, 2));
     }
 
+    @Test
+    void donationsCountOnlyApprovedByApprovalMonth() {
+        YearMonth now = YearMonth.now();
+        List<String> months = AdminStatsService.lastMonths(now);
+        List<Donation> approved = List.of(
+                donation(2L, "50.00", now.atDay(1).atStartOfDay()),
+                donation(2L, "150.00", now.atDay(1).atStartOfDay()),
+                donation(4L, "20.00", now.minusMonths(2).atDay(5).atStartOfDay()));
+
+        Donations stats = AdminStatsService.donations(approved, months);
+
+        assertThat(stats.totalRaised()).isEqualTo(220);
+        assertThat(stats.approvedCount()).isEqualTo(3);
+        assertThat(stats.raisedByMonth()).hasSize(12);
+        assertThat(stats.raisedByMonth().get(11)).isEqualTo(new Raised(now.toString(), 200, 2));
+        assertThat(stats.raisedByMonth().get(9)).isEqualTo(new Raised(now.minusMonths(2).toString(), 20, 1));
+        assertThat(stats.raisedByMonth().get(0).amount()).isZero();
+    }
+
+    @Test
+    void campaignsSplitListedRemovedAndSuspended() {
+        Campaign active = campaign(1L, 2L, CampaignStatus.ACTIVE);
+        Campaign closed = campaign(2L, 2L, CampaignStatus.CLOSED);
+        Campaign expired = campaign(3L, 2L, CampaignStatus.ACTIVE);
+        expired.setDeadline(LocalDate.now().minusDays(1));
+        Campaign removed = campaign(4L, 2L, CampaignStatus.ACTIVE);
+        removed.setDeleted(true);
+        Campaign ofBannedNgo = campaign(5L, 9L, CampaignStatus.ACTIVE);
+
+        Campaigns stats = AdminStatsService.campaigns(List.of(active, closed, expired, removed, ofBannedNgo),
+                campaign -> campaign.getNgoId() != 9L);
+
+        assertThat(stats).isEqualTo(new Campaigns(1, 2, 1, 1));
+    }
+
+    @Test
+    void raisedRankingCarriesTheAdoptionsOfEachNgo() {
+        List<Donation> approved = List.of(
+                donation(2L, "100.00", LocalDateTime.now()),
+                donation(4L, "300.00", LocalDateTime.now()),
+                donation(2L, "50.00", LocalDateTime.now()));
+        List<AdoptionRequest> requests = List.of(happened(AdoptionStatus.CONCLUDED, person, null, null));
+
+        assertThat(AdminStatsService.ngoRankingByRaised(approved, Map.of(2L, "Conta 2", 4L, "Conta 4"), requests))
+                .containsExactly(new RankedNgo(4L, "Conta 4", 300, 0), new RankedNgo(2L, "Conta 2", 150, 1));
+    }
+
+    @Test
+    void recentActivityShowsCreatedCampaigns() {
+        Campaign campaign = campaign(7L, 2L, CampaignStatus.ACTIVE);
+        campaign.setTitle("Cirurgia do Rex");
+        donor.setCreatedAt(LocalDateTime.now().minusDays(3));
+
+        List<Activity> activity = AdminStatsService.recentActivity(List.of(donor), List.of(), List.of(), List.of(campaign));
+
+        assertThat(activity.get(0)).isEqualTo(new Activity("CAMPAIGN_CREATED", campaign.getCreatedAt(), 7L,
+                "Cirurgia do Rex", "Conta 2"));
+    }
+
     // ===================== Fixtures =====================
+
+    private static Donation donation(Long ngoId, String amount, LocalDateTime approvedAt) {
+        Donation donation = new Donation();
+        donation.setNgoId(ngoId);
+        donation.setAmount(new BigDecimal(amount));
+        donation.setStatus(DonationStatus.APPROVED);
+        donation.setApprovedAt(approvedAt);
+        return donation;
+    }
+
+    private static Campaign campaign(Long id, Long ngoId, CampaignStatus status) {
+        Campaign campaign = new Campaign();
+        campaign.setId(id);
+        campaign.setNgoId(ngoId);
+        campaign.setStatus(status);
+        campaign.setCreatedAt(LocalDateTime.now());
+        return campaign;
+    }
 
     private AdoptionRequest happened(AdoptionStatus status, User adopter, Integer score, ReturnReason reason) {
         AdoptionRequest request = request(status, adopter);

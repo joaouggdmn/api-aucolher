@@ -70,6 +70,12 @@ public class CampaignService {
         return toDtos(campaigns.findByNgoIdAndDeletedFalseOrderByCreatedAtDesc(user.getId()));
     }
 
+    /** Painel do admin: todas as campanhas, inclusive as excluídas, com a situação da ONG. */
+    @Transactional(readOnly = true)
+    public List<CampaignResponseDTO> listForAdmin() {
+        return toDtos(campaigns.findAllByOrderByCreatedAtDesc());
+    }
+
     // --------------------------------------------------------------- escrita
 
     @Transactional
@@ -97,6 +103,23 @@ public class CampaignService {
         User user = currentUser(auth);
         Campaign c = lockExisting(id);                // 404
         requireOwner(c, user);                        // 403
+        return save(c, req);
+    }
+
+    /**
+     * Moderação: o admin edita a campanha de uma ONG, com as mesmas regras
+     * dela (encerrada não edita, uma urgente ativa por ONG). A campanha
+     * continua em nome da ONG, e fica registrado que a moderação a editou.
+     */
+    @Transactional
+    public CampaignResponseDTO updateByModeration(Long id, CampaignRequestDTO req, Long adminId) {
+        Campaign c = lockExisting(id);                // 404 (também se excluída)
+        c.markModeratedBy(adminId);
+        return save(c, req);
+    }
+
+    /** Validação e gravação comuns à ONG dona e ao admin. */
+    private CampaignResponseDTO save(Campaign c, CampaignRequestDTO req) {
         if (isClosed(c)) {                            // 400
             throw new BusinessException("Campanhas encerradas não podem ser editadas.");
         }
@@ -137,6 +160,21 @@ public class CampaignService {
         }
     }
 
+    /**
+     * Moderação: o admin remove a campanha. Ela vira exclusão lógica com
+     * removed_by_moderation, mesmo sem doações (a linha fica, para o admin
+     * ver o que removeu), e os PIX ainda não pagos são cancelados. As doações
+     * aprovadas continuam no total e no histórico. Já excluída ou inexistente: 404.
+     */
+    @Transactional
+    public void removeByModeration(Long id) {
+        Campaign c = lockExisting(id);
+        donations.cancelPendingByCampaign(c.getId());
+        c.setDeleted(true);
+        c.setRemovedByModeration(true);
+        campaigns.save(c);
+    }
+
     // ---------------------------------------------------------------- regras
 
     private boolean parseClosed(String status) {
@@ -151,11 +189,7 @@ public class CampaignService {
 
     /** Encerrada = status CLOSED, ou prazo vencido (calculado na leitura). */
     public boolean isClosed(Campaign c) {
-        return c.getStatus() == CampaignStatus.CLOSED || deadlinePassed(c);
-    }
-
-    private boolean deadlinePassed(Campaign c) {
-        return c.getDeadline() != null && c.getDeadline().isBefore(LocalDate.now());
+        return c.isClosed();
     }
 
     private void checkNoOtherUrgent(Long ngoId, Long excludeId) {
@@ -244,7 +278,7 @@ public class CampaignService {
             return null;
         }
         return new CampaignNgoDTO(ngo.getId(), ngo.getName(), Boolean.TRUE.equals(ngo.getVerified()),
-                ngo.getPhotoUrl(), ngo.getCity(), ngo.getState());
+                ngo.getPhotoUrl(), ngo.getCity(), ngo.getState(), isActive(ngo));
     }
 
     private CampaignResponseDTO toDto(Campaign c) {
@@ -273,7 +307,7 @@ public class CampaignService {
         return list.stream().map(c -> {
             boolean closed = isClosed(c);
             LocalDateTime closedAt = c.getClosedAt();
-            if (closedAt == null && deadlinePassed(c)) {
+            if (closedAt == null && c.deadlinePassed()) {
                 closedAt = c.getDeadline().atTime(23, 59, 59);
             }
             return new CampaignResponseDTO(
@@ -283,8 +317,10 @@ public class CampaignService {
                     counts.getOrDefault(c.getId(), 0L),
                     c.getCoverUrl(), c.getDeadline(),
                     closed ? CampaignStatus.CLOSED : CampaignStatus.ACTIVE,
-                    !closed && connected.getOrDefault(c.getNgoId(), false),
-                    c.getCreatedAt(), closedAt, toNgo(ngos.get(c.getNgoId())));
+                    !closed && !c.isDeleted() && connected.getOrDefault(c.getNgoId(), false),
+                    c.getCreatedAt(), closedAt,
+                    c.isDeleted(), c.isRemovedByModeration(), c.getModeratedAt(),
+                    toNgo(ngos.get(c.getNgoId())));
         }).toList();
     }
 }
