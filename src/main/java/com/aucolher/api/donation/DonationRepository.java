@@ -43,6 +43,9 @@ public interface DonationRepository extends JpaRepository<Donation, Long> {
 
     Optional<Donation> findByMpOrderId(String mpOrderId);
 
+    /** Números da Visão geral do admin (as APPROVED, inclusive de campanhas excluídas). */
+    List<Donation> findByStatus(DonationStatus status);
+
     List<Donation> findByDonorIdOrderByCreatedAtDesc(Long donorId);
 
     List<Donation> findByNgoIdAndStatusOrderByApprovedAtDesc(Long ngoId, DonationStatus status);

@@ -7,6 +7,9 @@ import com.aucolher.api.admin.dto.AdminUserProfileDTO;
 import com.aucolher.api.admin.dto.AdminUserUpdateDTO;
 import com.aucolher.api.animal.dto.AnimalDetailDTO;
 import com.aucolher.api.animal.dto.AnimalRequestDTO;
+import com.aucolher.api.campaign.CampaignService;
+import com.aucolher.api.campaign.dto.CampaignRequestDTO;
+import com.aucolher.api.campaign.dto.CampaignResponseDTO;
 import com.aucolher.api.event.dto.EventRequestDTO;
 import com.aucolher.api.admin.dto.UserStatusDTO;
 import com.aucolher.api.event.EventService;
@@ -35,6 +38,7 @@ public class AdminController {
     private final AdminStatsService statsService;
     private final ModerationService moderationService;
     private final EventService eventService;
+    private final CampaignService campaignService;
     private final ReportService reportService;
 
     /** Números e gráficos da Visão geral, com a taxa de reabandono. */
@@ -61,6 +65,12 @@ public class AdminController {
     @GetMapping("/events")
     public ResponseEntity<List<EventResponseDTO>> listEvents() {
         return ResponseEntity.ok(eventService.listForAdmin());
+    }
+
+    /** Todas as campanhas (ativas, encerradas e excluídas), mais recentes primeiro, com `removed` e `ngo.active`. */
+    @GetMapping("/campaigns")
+    public ResponseEntity<List<CampaignResponseDTO>> listCampaigns() {
+        return ResponseEntity.ok(campaignService.listForAdmin());
     }
 
     /** Todas as denúncias, em qualquer situação, com quem denunciou. */
@@ -98,6 +108,13 @@ public class AdminController {
         return ResponseEntity.ok(moderationService.updateEvent(id, body, admin.getUsername()));
     }
 
+    /** O mesmo corpo de PUT /api/campaigns/{id}. */
+    @PutMapping("/campaigns/{id}")
+    public ResponseEntity<CampaignResponseDTO> updateCampaign(@PathVariable Long id, @Valid @RequestBody CampaignRequestDTO body,
+                                                              @AuthenticationPrincipal UserDetails admin) {
+        return ResponseEntity.ok(moderationService.updateCampaign(id, body, admin.getUsername()));
+    }
+
     // ===================== Moderação =====================
 
     /** Banir (`{ "active": false }`) ou reativar (`{ "active": true }`) uma conta. */
@@ -128,6 +145,12 @@ public class AdminController {
     @DeleteMapping("/events/{id}")
     public ResponseEntity<Void> removeEvent(@PathVariable Long id) {
         moderationService.removeEvent(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/campaigns/{id}")
+    public ResponseEntity<Void> removeCampaign(@PathVariable Long id) {
+        moderationService.removeCampaign(id);
         return ResponseEntity.noContent().build();
     }
 }

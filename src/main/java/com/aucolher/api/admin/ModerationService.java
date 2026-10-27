@@ -9,6 +9,9 @@ import com.aucolher.api.animal.AnimalRepository;
 import com.aucolher.api.animal.AnimalService;
 import com.aucolher.api.animal.dto.AnimalDetailDTO;
 import com.aucolher.api.animal.dto.AnimalRequestDTO;
+import com.aucolher.api.campaign.CampaignService;
+import com.aucolher.api.campaign.dto.CampaignRequestDTO;
+import com.aucolher.api.campaign.dto.CampaignResponseDTO;
 import com.aucolher.api.event.EventService;
 import com.aucolher.api.event.dto.EventRequestDTO;
 import com.aucolher.api.event.dto.EventResponseDTO;
@@ -32,11 +35,11 @@ import java.util.List;
 
 /**
  * As decisões do admin que mexem em vários módulos — banir, reativar, remover
- * anúncio ou evento, arquivar denúncia —, cada uma numa transação só.
+ * anúncio, evento ou campanha, arquivar denúncia —, cada uma numa transação só.
  *
- * Banir não apaga nem altera o conteúdo da conta: os animais e eventos dela
- * somem das rotas públicas pelo filtro de conta ativa, e voltam se ela for
- * reativada. Pedidos cancelados e denúncias resolvidas não voltam.
+ * Banir não apaga nem altera o conteúdo da conta: os animais, eventos e
+ * campanhas dela somem das rotas públicas pelo filtro de conta ativa, e voltam
+ * se ela for reativada. Pedidos cancelados e denúncias resolvidas não voltam.
  */
 @Service
 @RequiredArgsConstructor
@@ -46,6 +49,7 @@ public class ModerationService {
     private final AnimalRepository animalRepository;
     private final AnimalService animalService;
     private final EventService eventService;
+    private final CampaignService campaignService;
     private final ReportService reportService;
     private final AdoptionRequestService requestService;
     private final UserService userService;
@@ -72,6 +76,11 @@ public class ModerationService {
     @Transactional
     public EventResponseDTO updateEvent(Long eventId, EventRequestDTO body, String adminEmail) {
         return eventService.updateByModeration(eventId, body, findAdmin(adminEmail).getId());
+    }
+
+    @Transactional
+    public CampaignResponseDTO updateCampaign(Long campaignId, CampaignRequestDTO body, String adminEmail) {
+        return campaignService.updateByModeration(campaignId, body, findAdmin(adminEmail).getId());
     }
 
     /** Banir (`active: false`) ou reativar (`active: true`) uma conta direto da lista do admin. */
@@ -124,6 +133,12 @@ public class ModerationService {
     @Transactional
     public void removeEvent(Long eventId) {
         eventService.removeByModeration(eventId);
+    }
+
+    /** Remove a campanha: exclusão lógica marcada como removida pela moderação; os PIX pendentes caem. */
+    @Transactional
+    public void removeCampaign(Long campaignId) {
+        campaignService.removeByModeration(campaignId);
     }
 
     /**

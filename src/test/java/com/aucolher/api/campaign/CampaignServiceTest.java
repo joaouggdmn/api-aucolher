@@ -271,6 +271,75 @@ class CampaignServiceTest {
         assertThatThrownBy(() -> service.listPublic(null, "PAUSED")).isInstanceOf(BusinessException.class);
     }
 
+    // ===================== Admin e moderação =====================
+
+    @Test
+    void adminEditMarksTheModeration() {
+        Campaign c = campaign(4L, 1L, "Ração");
+        when(campaigns.findByIdForUpdate(4L)).thenReturn(Optional.of(c));
+        givenSaved();
+
+        CampaignResponseDTO dto = service.updateByModeration(4L, request(CampaignCategory.FOOD, null, false), 99L);
+
+        assertThat(c.getModeratedBy()).isEqualTo(99L);
+        assertThat(dto.moderatedAt()).isNotNull();
+        assertThat(dto.title()).isEqualTo("Cirurgia do Rex");
+    }
+
+    @Test
+    void adminDoesNotEditAClosedCampaign() {
+        Campaign c = campaign(4L, 1L, "Ração");
+        c.setStatus(CampaignStatus.CLOSED);
+        when(campaigns.findByIdForUpdate(4L)).thenReturn(Optional.of(c));
+
+        assertThatThrownBy(() -> service.updateByModeration(4L, request(CampaignCategory.FOOD, null, false), 99L))
+                .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    void moderationRemovalIsAlwaysLogical() {
+        Campaign c = campaign(4L, 1L, "Ração");
+        when(campaigns.findByIdForUpdate(4L)).thenReturn(Optional.of(c));
+
+        service.removeByModeration(4L);
+
+        verify(donations).cancelPendingByCampaign(4L);
+        assertThat(c.isDeleted()).isTrue();
+        assertThat(c.isRemovedByModeration()).isTrue();
+        verify(campaigns).save(c);
+        verify(campaigns, never()).delete(any());
+    }
+
+    @Test
+    void removingAnAlreadyDeletedCampaignIsNotFound() {
+        Campaign c = campaign(4L, 1L, "Ração");
+        c.setDeleted(true);
+        when(campaigns.findByIdForUpdate(4L)).thenReturn(Optional.of(c));
+
+        assertThatThrownBy(() -> service.removeByModeration(4L))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessage("Campanha não encontrada.");
+    }
+
+    @Test
+    void adminListShowsRemovedCampaignsAndBannedNgos() {
+        Campaign removed = campaign(4L, 1L, "Ração");
+        removed.setDeleted(true);
+        removed.setRemovedByModeration(true);
+        User banned = ngo(1L);
+        banned.setActive(false);
+        when(campaigns.findAllByOrderByCreatedAtDesc()).thenReturn(List.of(removed));
+        when(users.findAllById(any())).thenReturn(List.of(banned));
+        when(mercadoPago.isConnected(1L)).thenReturn(true);
+
+        CampaignResponseDTO dto = service.listForAdmin().get(0);
+
+        assertThat(dto.removed()).isTrue();
+        assertThat(dto.removedByModeration()).isTrue();
+        assertThat(dto.ngo().active()).isFalse();
+        assertThat(dto.acceptingDonations()).isFalse();
+    }
+
     // ===================== Apoio =====================
 
     private void givenLogged(User user) {
