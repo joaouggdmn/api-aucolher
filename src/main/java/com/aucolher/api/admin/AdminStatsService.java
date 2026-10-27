@@ -10,6 +10,11 @@ import com.aucolher.api.animal.AnimalRepository;
 import com.aucolher.api.animal.entity.Animal;
 import com.aucolher.api.animal.entity.AnimalStatus;
 import com.aucolher.api.animal.entity.Species;
+import com.aucolher.api.campaign.CampaignRepository;
+import com.aucolher.api.campaign.entity.Campaign;
+import com.aucolher.api.donation.DonationRepository;
+import com.aucolher.api.donation.entity.Donation;
+import com.aucolher.api.donation.entity.DonationStatus;
 import com.aucolher.api.event.EventRepository;
 import com.aucolher.api.event.entity.Event;
 import com.aucolher.api.event.entity.EventStatus;
@@ -22,6 +27,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
@@ -53,6 +59,8 @@ public class AdminStatsService {
     private final AnimalRepository animalRepository;
     private final AdoptionRequestRepository requestRepository;
     private final EventRepository eventRepository;
+    private final CampaignRepository campaignRepository;
+    private final DonationRepository donationRepository;
     private final ReportRepository reportRepository;
 
     @Transactional(readOnly = true)
@@ -61,21 +69,25 @@ public class AdminStatsService {
         List<Animal> animals = animalRepository.findAllByOrderByCreatedAtDescIdDesc();
         List<AdoptionRequest> requests = requestRepository.findAllByOrderByCreatedAtDescIdDesc();
         List<Event> events = eventRepository.findAllByOrderByDateDescStartTimeDesc();
+        List<Campaign> campaigns = campaignRepository.findAllByOrderByCreatedAtDesc();
+        List<Donation> approved = donationRepository.findByStatus(DonationStatus.APPROVED);
         List<String> months = lastMonths(YearMonth.now());
 
         Map<Long, Boolean> activeById = accounts.stream()
                 .collect(Collectors.toMap(User::getId, user -> Boolean.TRUE.equals(user.getActive())));
         Predicate<Event> ngoActive = event -> activeById.getOrDefault(event.getNgoId(), false);
+        Predicate<Campaign> campaignNgoActive = campaign -> activeById.getOrDefault(campaign.getNgoId(), false);
+        Map<Long, String> names = accounts.stream().collect(Collectors.toMap(User::getId, User::getName));
 
         return new AdminStatsDTO(
                 users(accounts, months),
                 animals(animals, requests),
                 adoptions(requests, months),
-                new Donations(0, 0, months.stream().map(month -> new Raised(month, 0, 0)).toList()),
-                new Campaigns(0, 0, 0, 0),
+                donations(approved, months),
+                campaigns(campaigns, campaignNgoActive),
                 events(events, ngoActive),
-                new NgoRanking(List.of(), ngoRankingByAdoptions(requests)),
-                recentActivity(accounts, requests, events),
+                new NgoRanking(ngoRankingByRaised(approved, names, requests), ngoRankingByAdoptions(requests)),
+                recentActivity(accounts, requests, events, campaigns),
                 new Reports(reportRepository.countByStatus(ReportStatus.PENDING), reportRepository.countPendingTargets()),
                 returns(requests));
     }
@@ -134,6 +146,35 @@ public class AdminStatsService {
                         .toList());
     }
 
+    /**
+     * Só as doações APPROVED, pelo mês da aprovação, em reais inteiros. As de
+     * campanhas excluídas continuam contando: o dinheiro entrou.
+     */
+    static Donations donations(List<Donation> approved, List<String> months) {
+        return new Donations(
+                sumOf(approved),
+                approved.size(),
+                months.stream().map(month -> {
+                    List<Donation> inMonth = approved.stream()
+                            .filter(donation -> month.equals(monthOf(donation.getApprovedAt())))
+                            .toList();
+                    return new Raised(month, sumOf(inMonth), inMonth.size());
+                }).toList());
+    }
+
+    /**
+     * `active` e `closed` não contam as excluídas nem as de ONG banida (essas
+     * vão em `suspended`); `removed` conta as excluídas que continuam no banco.
+     */
+    static Campaigns campaigns(List<Campaign> campaigns, Predicate<Campaign> ngoActive) {
+        Predicate<Campaign> listed = campaign -> !campaign.isDeleted() && ngoActive.test(campaign);
+        return new Campaigns(
+                count(campaigns, listed.and(campaign -> !campaign.isClosed())),
+                count(campaigns, listed.and(Campaign::isClosed)),
+                count(campaigns, Campaign::isDeleted),
+                count(campaigns, campaign -> !campaign.isDeleted() && !ngoActive.test(campaign)));
+    }
+
     /** `upcoming` e `past` não contam os de ONG banida: esses vão em `suspended`. */
     static Events events(List<Event> events, Predicate<Event> ngoActive) {
         LocalDate today = LocalDate.now();
@@ -160,8 +201,26 @@ public class AdminStatsService {
                 .toList();
     }
 
-    /** Os 8 acontecimentos mais recentes: contas criadas, adoções e eventos criados. */
-    static List<Activity> recentActivity(List<User> accounts, List<AdoptionRequest> requests, List<Event> events) {
+    /**
+     * As ONGs que mais arrecadaram (até 5, só com valor maior que zero), com as
+     * adoções de cada uma pelo mesmo cálculo do ranking de adoções.
+     */
+    static List<RankedNgo> ngoRankingByRaised(List<Donation> approved, Map<Long, String> names,
+                                              List<AdoptionRequest> requests) {
+        Map<Long, Long> adoptions = adoptionsByNgo(requests);
+        Map<Long, List<Donation>> byNgo = approved.stream().collect(Collectors.groupingBy(Donation::getNgoId));
+        return byNgo.entrySet().stream()
+                .map(entry -> new RankedNgo(entry.getKey(), names.get(entry.getKey()), sumOf(entry.getValue()),
+                        adoptions.getOrDefault(entry.getKey(), 0L)))
+                .filter(ngo -> ngo.raised() > 0)
+                .sorted(Comparator.comparingLong(RankedNgo::raised).reversed())
+                .limit(RANKING_LIMIT)
+                .toList();
+    }
+
+    /** Os 8 acontecimentos mais recentes: contas criadas, adoções, eventos e campanhas criados. */
+    static List<Activity> recentActivity(List<User> accounts, List<AdoptionRequest> requests, List<Event> events,
+                                         List<Campaign> campaigns) {
         Map<Long, String> names = accounts.stream().collect(Collectors.toMap(User::getId, User::getName));
         return Stream.of(
                         accounts.stream().map(user -> new Activity("ACCOUNT_CREATED", user.getCreatedAt(), user.getId(),
@@ -169,7 +228,9 @@ public class AdminStatsService {
                         happened(requests).map(request -> new Activity("ADOPTION_CONCLUDED", request.getConcludedAt(),
                                 request.getAnimal().getId(), request.getAnimal().getName(), request.getAdopter().getName())),
                         events.stream().map(event -> new Activity("EVENT_CREATED", event.getCreatedAt(), event.getId(),
-                                event.getTitle(), names.get(event.getNgoId()))))
+                                event.getTitle(), names.get(event.getNgoId()))),
+                        campaigns.stream().map(campaign -> new Activity("CAMPAIGN_CREATED", campaign.getCreatedAt(),
+                                campaign.getId(), campaign.getTitle(), names.get(campaign.getNgoId()))))
                 .flatMap(Function.identity())
                 .filter(activity -> activity.at() != null)
                 .sorted(Comparator.comparing(Activity::at).reversed())
@@ -234,6 +295,19 @@ public class AdminStatsService {
     /** Porcentagem com uma casa decimal; nula quando não há base. */
     static Double rateOf(long part, long total) {
         return total == 0 ? null : Math.round(part * 1000.0 / total) / 10.0;
+    }
+
+    /** Adoções que aconteceram com animais de cada ONG, pelo id da ONG. */
+    private static Map<Long, Long> adoptionsByNgo(List<AdoptionRequest> requests) {
+        return happened(requests)
+                .map(request -> request.getAnimal().getOwner())
+                .filter(owner -> owner.getUserType() == UserType.NGO)
+                .collect(Collectors.groupingBy(User::getId, Collectors.counting()));
+    }
+
+    /** Soma em reais inteiros (o contrato não tem centavos). */
+    private static long sumOf(List<Donation> donations) {
+        return donations.stream().map(Donation::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add).longValue();
     }
 
     private static Stream<AdoptionRequest> happened(List<AdoptionRequest> requests) {

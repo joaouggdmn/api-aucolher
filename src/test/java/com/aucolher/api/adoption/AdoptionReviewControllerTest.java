@@ -4,6 +4,7 @@ import com.aucolher.api.config.SecurityConfig;
 import com.aucolher.api.security.CustomOAuth2UserService;
 import com.aucolher.api.security.CustomUserDetailsService;
 import com.aucolher.api.security.JwtService;
+import com.aucolher.api.security.OAuth2AuthenticationFailureHandler;
 import com.aucolher.api.security.OAuth2AuthenticationSuccessHandler;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -45,6 +46,8 @@ class AdoptionReviewControllerTest {
     private CustomOAuth2UserService customOAuth2UserService;
     @MockBean
     private OAuth2AuthenticationSuccessHandler oAuth2AuthenticationSuccessHandler;
+    @MockBean
+    private OAuth2AuthenticationFailureHandler oAuth2AuthenticationFailureHandler;
 
     @Test
     void profileReviewsArePublic() throws Exception {

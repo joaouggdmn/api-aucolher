@@ -42,6 +42,20 @@ src/main/java/com/aucolher/api/
 │   ├── EventRepository.java / EventAttendanceRepository.java
 │   ├── entity/                             # Event, EventAttendance + EventCategory, EventStatus
 │   └── dto/                                # EventRequestDTO, EventResponseDTO, AttendeeDTO, NgoSummaryDTO...
+├── campaign/                               # Campanhas de arrecadação das ONGs
+│   ├── CampaignController.java
+│   ├── CampaignService.java                # Regras: uma urgente ativa por ONG, prazo vencido = encerrada, exclusão real ou lógica
+│   ├── CampaignRepository.java
+│   ├── MercadoPagoAccountGateway.java      # A conta Mercado Pago da ONG (por ora, o Placeholder com um token de teste)
+│   ├── entity/                             # Campaign + CampaignCategory, CampaignStatus
+│   └── dto/                                # CampaignRequestDTO, CampaignResponseDTO, CampaignNgoDTO
+├── donation/                               # Doações por PIX (Mercado Pago, Orders API)
+│   ├── DonationController.java
+│   ├── DonationService.java                # Cria o PIX, polling da order, aprovação atômica
+│   ├── MercadoPagoPixClient.java           # Chamadas à Orders API (criar e consultar a order)
+│   ├── MercadoPagoWebhookController.java / MercadoPagoWebhookValidator.java  # Webhook com a assinatura x-signature
+│   ├── entity/                             # Donation + DonationStatus
+│   └── dto/                                # DonationResponseDTO, DonationPixDTO, DonationCampaignDTO...
 ├── match/                                  # AUmatch: quiz da pessoa e deck por compatibilidade
 │   ├── MatchController.java
 │   ├── MatchService.java                   # Perfil do quiz e deck (filtra, pontua e ordena)
@@ -97,7 +111,7 @@ src/test/java/...                           # Testes (JUnit 5 + Mockito + MockMv
 psql -U postgres -h localhost -f sql/schema.sql
 ```
 
-O script cria o banco `aucolher_db` (se ainda não existir) e as tabelas `users`, `ngo_team`, `ngo_visiting_hours`, `animals`, `animal_photos`, `favorites`, `match_profiles`, `adoption_requests`, `adoption_reviews`, `events`, `event_attendances` e `reports`. Todas usam `IF NOT EXISTS`, então rodar o script de novo não apaga nada. É uma cópia de `docs/script_banco_aucolher.sql` do frontend — mantenha os dois iguais. Rode o script antes de subir a API: o Hibernate (`ddl-auto=validate`) não cria o banco nem as tabelas, só confere se elas batem com as entidades.
+O script cria o banco `aucolher_db` (se ainda não existir) e as tabelas `users`, `ngo_team`, `ngo_visiting_hours`, `animals`, `animal_photos`, `favorites`, `match_profiles`, `adoption_requests`, `adoption_reviews`, `events`, `event_attendances`, `reports`, `campaigns` e `donations`. Todas usam `IF NOT EXISTS`, então rodar o script de novo não apaga nada. É uma cópia de `docs/script_banco_aucolher.sql` do frontend — mantenha os dois iguais. Rode o script antes de subir a API: o Hibernate (`ddl-auto=validate`) não cria o banco nem as tabelas, só confere se elas batem com as entidades.
 
 #### Banco criado antes da padronização em inglês
 
@@ -150,6 +164,16 @@ psql -U postgres -h localhost -d aucolher_db -f sql/migrations/006_events.sql
 
 Só cria tabelas novas e pode ser repetida.
 
+#### Campanhas e doações (migração 007)
+
+A 007 cria `campaigns` (já com `deleted`, `removed_by_moderation`, `moderated_at` e `moderated_by`) e `donations` (com `campaign_title` e `ngo_id` guardados na doação, para o histórico continuar legível se a campanha for apagada de vez). Sem ela a API não sobe (`Schema-validation: missing table [campaigns]`):
+
+```bash
+psql -U postgres -h localhost -d aucolher_db -f sql/migrations/007_campaigns.sql
+```
+
+Só cria o que falta e reescreve os comentários: pode ser repetida.
+
 #### Retorno, repasse e score congelado (migração 012)
 
 A 012 prepara a **taxa de reabandono**: um pedido `CONCLUDED` pode virar `RETURNED` (o animal voltou para quem doou) ou `REHOMED` (o adotante republicou o animal). Ela acrescenta em `adoption_requests` o score do AUmatch congelado na conclusão (`match_score_at_adoption`) e os dados do retorno (`return_date`, `return_reason`, `return_note`, `return_recorded_at`), e em `animals` o `origin_request_id` do anúncio republicado. Sem ela a API não sobe (`Schema-validation: missing column [match_score_at_adoption]`):
@@ -168,7 +192,7 @@ A 014 cria a tabela `reports` (denúncias de anúncios e perfis, com a cópia do
 psql -U postgres -h localhost -d aucolher_db -f sql/migrations/014_reports_moderation.sql
 ```
 
-Pode ser repetida. **Campanhas:** a tabela `campaigns` ainda não existe no backend, então a 014 não mexe nela. Quem criar a tabela (migração 007) deve incluir `removed_by_moderation BOOLEAN NOT NULL DEFAULT FALSE` com `CHECK (NOT removed_by_moderation OR deleted)`.
+Pode ser repetida. A 014 não mexe em `campaigns`: as colunas de moderação dela já nascem na 007.
 
 #### Banner da ONG (migração 008)
 
@@ -192,7 +216,7 @@ Só acrescenta colunas nulas e pode ser repetida.
 
 #### Sem e-mail institucional (migração 015)
 
-A 015 apaga a coluna `users.institutional_email`: o contato público da ONG passa a ser o próprio e-mail de login. (As migrações 007 a 014 estão reservadas para as próximas sprints.) A API sobe com ou sem ela, porque o `validate` não reclama de coluna sobrando, mas rode para o banco ficar igual ao `schema.sql`:
+A 015 apaga a coluna `users.institutional_email`: o contato público da ONG passa a ser o próprio e-mail de login. (As migrações 009 a 013 estão reservadas para as próximas sprints.) A API sobe com ou sem ela, porque o `validate` não reclama de coluna sobrando, mas rode para o banco ficar igual ao `schema.sql`:
 
 ```bash
 psql -U postgres -h localhost -d aucolher_db -f sql/migrations/015_drop_institutional_email.sql
@@ -217,6 +241,10 @@ Depois de trazer as mudanças do Git, faça **Build → Rebuild Project** no Int
 | `ADMIN_EMAIL`         | E-mail da conta admin criada ao subir        | — (sem padrão versionado) |
 | `ADMIN_PASSWORD`      | Senha da conta admin (mínimo 8 caracteres)   | — (sem padrão versionado) |
 | `ADMIN_NAME`          | Nome exibido da conta admin                  | `Administrador`         |
+| `MP_DEV_ACCESS_TOKEN` | Token de teste do Mercado Pago, usado por todas as ONGs (provisório, até a migração 009) | — |
+| `MP_SANDBOX`          | `true`: o pagador do PIX vai como `APRO` (o sandbox aprova sozinho) | `true` |
+| `MP_WEBHOOK_SECRET`   | Assinatura secreta dos webhooks do Mercado Pago | — (sem ela, todo webhook vira 401) |
+| `MP_BASE_URL`         | Endereço da API do Mercado Pago              | `https://api.mercadopago.com` |
 
 Sem `JWT_SECRET`, a API sobe gerando uma chave aleatória por execução (registra um WARN no log): dá para desenvolver, mas todo restart invalida os tokens já emitidos. Defina a variável em qualquer ambiente que não seja a sua máquina.
 
@@ -233,6 +261,8 @@ No IntelliJ, defina as variáveis assim:
 3. Em **Environment variables**, coloque `ADMIN_EMAIL=admin@aucolher.com;ADMIN_PASSWORD=uma-senha-forte`.
 
 Na primeira execução, o log mostra `Conta admin criada para ...`.
+
+**Mercado Pago (provisório).** O contrato manda cada ONG conectar a própria conta do Mercado Pago pelo OAuth (migração 009, `api-mercado-pago-ongs.md`), mas isso ainda não existe. Até lá, a `PlaceholderMercadoPagoAccountGateway` trata toda ONG como conectada e usa um único `MP_DEV_ACCESS_TOKEN`. Sem ele, as campanhas funcionam normalmente, mas doar responde 400 "Esta ONG não está recebendo doações no momento.".
 
 Para o login Google funcionar, crie as credenciais em [Google Cloud Console](https://console.cloud.google.com/apis/credentials) com **Authorized redirect URI**: `http://localhost:8080/login/oauth2/code/google`.
 
@@ -532,6 +562,27 @@ Todas exigem login.
 
 Categorias: `ADOPTION_FAIR`, `HEALTH`, `BAZAAR`, `WORKSHOP`. A data não pode estar no passado, o término precisa ser depois do início, a capacidade não pode ficar abaixo dos confirmados, e a ONG não confirma presença no próprio evento.
 
+### Campanhas e doações
+
+Contrato completo em `docs/entrega-final/api-campanhas-doacoes.md`, no frontend.
+
+| Método e rota | Quem acessa | O que faz |
+|---|---|---|
+| `GET /api/campaigns?ngoId=&status=` | Público | `status` = `ACTIVE` (padrão) ou `CLOSED`; nunca devolve excluídas nem de ONG banida; `createdAt` decrescente |
+| `GET /api/campaigns/{id}` | Público | Detalhe; encerrada abre normalmente. 404 se excluída ou de ONG banida |
+| `GET /api/campaigns/mine` | ONG | Ativas e encerradas da ONG logada, sem as excluídas |
+| `POST /api/campaigns` | ONG | Cria — 201. 400 sem conta Mercado Pago; 409 se ligar a urgência com outra urgente ativa |
+| `PUT /api/campaigns/{id}` | ONG dona | Substitui todos os campos; 400 se encerrada |
+| `POST /api/campaigns/{id}/close` | ONG dona | Encerra e cancela os PIX pendentes; 400 se já encerrada |
+| `DELETE /api/campaigns/{id}` | ONG dona | Sem doação aprovada, exclusão real; com, exclusão lógica (`deleted`). Cancela os PIX pendentes — 204 |
+| `POST /api/campaigns/{id}/donations` | Logado | `{ "amount": 50 }`: cria a doação `PENDING` e o PIX (Orders API) — 201. Admin → 403 |
+| `GET /api/donations/{id}` | Doador | Se `PENDING`, consulta a order no Mercado Pago antes (polling do modal) |
+| `GET /api/donations/mine` | Logado | Histórico de quem doou, em qualquer status |
+| `GET /api/donations/received` | ONG | Só `APPROVED`, nas campanhas da ONG (inclusive excluídas), com `donor` |
+| `POST /api/webhooks/mercadopago` | Mercado Pago | Confere o `x-signature` (HMAC-SHA256) e aprova a doação; 401 com assinatura inválida |
+
+Categorias: `HEALTH`, `FOOD`, `INFRASTRUCTURE`, `NEUTERING`, `RESCUE` e `OTHER` (com o nome em `customCategory`). Valores em reais inteiros: meta de R$ 50 a R$ 1.000.000, doação de R$ 5 a R$ 100.000. A campanha com prazo vencido conta como `CLOSED` (calculado na leitura, sem job), e o PIX vence em 30 minutos (`EXPIRED`, também calculado). `raisedAmount` e `donationsCount` somam só as `APPROVED`, e a aprovação é um `UPDATE` atômico, para o webhook e o polling nunca contarem duas vezes.
+
 ### Pedidos de adoção
 
 Todas exigem login. Enviar um pedido é para **pessoa ou ONG** (o admin recebe 403). O dono do pedido é sempre o dono do animal.
@@ -661,7 +712,7 @@ Qualquer conta logada de pessoa ou ONG denuncia um anúncio de animal (`ANIMAL`)
 
 Tudo em `/api/admin/**` é só da conta ADMIN: sem token, 401; com token de pessoa ou ONG, 403. As listas não são paginadas (o volume do TCC é pequeno; a busca e os filtros ficam no frontend).
 
-**O admin modera, mas não participa.** Ele remove, bane, reativa e **edita** contas, anúncios e eventos de outras pessoas (pelas rotas abaixo). O conteúdo editado continua em nome do dono, e fica registrado quando e por quem foi editado (`moderated_at` / `moderated_by`, migração 016): o dono vê "Editado pela moderação". Fora do painel, as rotas de participante respondem 403 para a conta ADMIN:
+**O admin modera, mas não participa.** Ele remove, bane, reativa e **edita** contas, anúncios, eventos e campanhas de outras pessoas (pelas rotas abaixo). O conteúdo editado continua em nome do dono, e fica registrado quando e por quem foi editado (`moderated_at` / `moderated_by`, migração 016): o dono vê "Editado pela moderação". Fora do painel, as rotas de participante respondem 403 para a conta ADMIN:
 
 | Rota | `message` |
 |---|---|
@@ -670,6 +721,7 @@ Tudo em `/api/admin/**` é só da conta ADMIN: sem token, 401; com token de pess
 | `POST /api/animals` | "Contas de admin não anunciam animais." |
 | `POST /api/adoption-requests`, `/api/match/**` | (regra da SecurityConfig) |
 | `POST /api/reports` | "Contas de admin não fazem denúncias: a moderação é feita pelo painel." |
+| `POST /api/campaigns/{id}/donations` | "Contas de admin não fazem doações." |
 
 | Método e rota | O que faz |
 |---|---|
@@ -677,6 +729,7 @@ Tudo em `/api/admin/**` é só da conta ADMIN: sem token, 401; com token de pess
 | `GET /api/admin/users` | Contas de pessoas e ONGs (sem admins), mais recentes primeiro, com `active` e `animalsCount` |
 | `GET /api/admin/animals` | Todos os anúncios, em qualquer status: o card da vitrine (com `owner.active`) + `listingStatus` (`AVAILABLE`, `IN_PROGRESS`, `ADOPTED`, `INACTIVE` ou `REMOVED`). `IN_PROGRESS` = disponível com pedido aceito ou aguardando entrega |
 | `GET /api/admin/events` | Todos os eventos, da data mais distante para a mais antiga, com `ngo.active` e `removedByModeration` |
+| `GET /api/admin/campaigns` | Todas as campanhas (ativas, encerradas e excluídas), mais recentes primeiro, com `removed`, `removedByModeration`, `moderatedAt` e `ngo.active` |
 | `GET /api/admin/adoption-requests` | Todos os pedidos, enxutos: status, motivo, datas, o animal (`id`, `name`, `species`, `status`, `coverPhoto`), o dono e o adotante |
 | `GET /api/admin/reports` | Todas as denúncias, em qualquer situação, com quem denunciou (`reporter`) |
 | `POST /api/admin/reports/{id}/dismiss` | Arquiva o caso (esta denúncia e as outras pendentes do mesmo alvo) e devolve as arquivadas |
@@ -686,10 +739,12 @@ Tudo em `/api/admin/**` é só da conta ADMIN: sem token, 401; com token de pess
 | `PUT /api/admin/users/{id}` | `{ "email": "...", "profile": { ...o corpo de PUT /api/users/me } }` — edita o perfil e o e-mail de login |
 | `PUT /api/admin/animals/{id}` | O corpo de `PUT /api/animals/{id}` — edita o anúncio (ativo, fora do ar ou adotado; removido não muda) |
 | `PUT /api/admin/events/{id}` | O corpo de `PUT /api/events/{id}` — edita o evento, com as regras da ONG (só ativo e que ainda não aconteceu) |
+| `PUT /api/admin/campaigns/{id}` | O corpo de `PUT /api/campaigns/{id}` — edita a campanha, com as regras da ONG (não edita encerrada, uma urgente ativa por ONG); 404 se excluída |
 | `DELETE /api/admin/animals/{id}` | Remove o anúncio (`REMOVED`) — 204 |
 | `DELETE /api/admin/events/{id}` | Remove o evento (`CANCELLED` + `removedByModeration`) — 204 |
+| `DELETE /api/admin/campaigns/{id}` | Remove a campanha (exclusão lógica + `removedByModeration`, mesmo sem doações) e cancela os PIX pendentes — 204 |
 
-**Banir** (numa transação): a conta para de entrar e o token dela deixa de valer; as denúncias pendentes contra o perfil e contra os anúncios dela são resolvidas (`ACCOUNT_BANNED`); os pedidos ativos em que ela é adotante ou dona são cancelados (`ACCOUNT_BANNED`). Os animais e eventos dela **não mudam**: somem das rotas públicas (vitrine, perfil, favoritos, deck, detalhe, eventos) e voltam se a conta for reativada. Pedidos cancelados e denúncias resolvidas não voltam. Contas admin não podem ser banidas (400).
+**Banir** (numa transação): a conta para de entrar e o token dela deixa de valer; as denúncias pendentes contra o perfil e contra os anúncios dela são resolvidas (`ACCOUNT_BANNED`); os pedidos ativos em que ela é adotante ou dona são cancelados (`ACCOUNT_BANNED`). Os animais, eventos e campanhas dela **não mudam**: somem das rotas públicas (vitrine, perfil, favoritos, deck, detalhe, eventos, campanhas e doação) e voltam se a conta for reativada. Pedidos cancelados e denúncias resolvidas não voltam. Contas admin não podem ser banidas (400).
 
 **Editar uma conta:** valem as mesmas regras de "Minha conta" (a ONG precisa do endereço completo). Contas admin não são editadas (400). O e-mail novo precisa ser único (409 "Este e-mail já está em uso por outra conta."), e conta que entra pelo Google não troca de e-mail (400), porque o próximo login pelo Google criaria outra conta. **Trocar o e-mail derruba a sessão da conta** (o token é pelo e-mail): ela entra de novo com o e-mail novo.
 
@@ -703,11 +758,13 @@ Tudo em `/api/admin/**` é só da conta ADMIN: sem token, 401; com token de pess
 | `animals` | `available`, `inProgress` e `bySpecies` sem os anúncios fora do ar e sem os de conta banida; `adopted` e `removed` contam sempre |
 | `adoptions` | O funil (cada etapa conta quem chegou nela ou passou dela; retorno e repasse contam como adoção) e `concludedByMonth` |
 | `events` | `upcoming`/`past` (ativos de ONG ativa), `cancelled` e `suspended` (de ONG banida) |
+| `donations` | Só `APPROVED`: `totalRaised`, `approvedCount` e `raisedByMonth` pela data de aprovação, em reais inteiros (as de campanhas excluídas continuam contando) |
+| `campaigns` | `active`/`closed` (sem excluídas e sem as de ONG banida), `removed` (excluídas que continuam no banco) e `suspended` (de ONG banida) |
+| `ngoRanking.byRaised` | As 5 ONGs que mais arrecadaram (só com valor maior que zero), com as adoções de cada uma |
 | `ngoRanking.byAdoptions` | As 5 ONGs com mais adoções de animais delas |
-| `recentActivity` | Os 8 acontecimentos mais recentes: `ACCOUNT_CREATED`, `ADOPTION_CONCLUDED`, `EVENT_CREATED` |
+| `recentActivity` | Os 8 acontecimentos mais recentes: `ACCOUNT_CREATED`, `ADOPTION_CONCLUDED`, `EVENT_CREATED`, `CAMPAIGN_CREATED` |
 | `reports` | `pending` (denúncias em análise) e `pendingTargets` (alvos diferentes, os "casos") |
 | `returns` | A **taxa de reabandono**, sem as adoções feitas por ONG: `adoptions` (`CONCLUDED` + `RETURNED` + `REHOMED`), `returned`, `rehomed`, `rate` (% com uma casa, nula sem adoções), `byRange` pelo score congelado (`HIGH` 80–100, `MEDIUM` 50–79, `LOW` 0–49), `noScore` e `byReason` (sempre as 7 chaves) |
-| `donations`, `campaigns`, `ngoRanking.byRaised` | **Zerados** enquanto não há campanhas no backend (migração 007); o frontend os completa com o mock |
 
 ### AUmatch
 

@@ -8,6 +8,7 @@ import com.aucolher.api.match.entity.Housing;
 import com.aucolher.api.security.CustomOAuth2UserService;
 import com.aucolher.api.security.CustomUserDetailsService;
 import com.aucolher.api.security.JwtService;
+import com.aucolher.api.security.OAuth2AuthenticationFailureHandler;
 import com.aucolher.api.security.OAuth2AuthenticationSuccessHandler;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -56,6 +57,8 @@ class MatchControllerTest {
     private CustomOAuth2UserService customOAuth2UserService;
     @MockBean
     private OAuth2AuthenticationSuccessHandler oAuth2AuthenticationSuccessHandler;
+    @MockBean
+    private OAuth2AuthenticationFailureHandler oAuth2AuthenticationFailureHandler;
 
     @Test
     void profileRequiresLogin() throws Exception {

@@ -12,8 +12,8 @@ import java.util.Map;
  * cobrem sempre os últimos 12 meses ("YYYY-MM"), do mais antigo ao atual,
  * com zero onde não houve nada.
  *
- * `donations`, `campaigns` e `ngoRanking.byRaised` saem zerados enquanto o
- * backend não tem campanhas (migração 007): o frontend os preenche com o mock.
+ * `donations` e `ngoRanking.byRaised` contam só as doações APPROVED, em reais
+ * inteiros, inclusive as de campanhas excluídas.
  */
 public record AdminStatsDTO(
         Users users,

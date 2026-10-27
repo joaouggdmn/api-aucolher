@@ -6,6 +6,7 @@ import com.aucolher.api.report.entity.ReportTargetType;
 import com.aucolher.api.security.CustomOAuth2UserService;
 import com.aucolher.api.security.CustomUserDetailsService;
 import com.aucolher.api.security.JwtService;
+import com.aucolher.api.security.OAuth2AuthenticationFailureHandler;
 import com.aucolher.api.security.OAuth2AuthenticationSuccessHandler;
 import com.aucolher.api.shared.exception.ConflictException;
 import org.junit.jupiter.api.Test;
@@ -47,6 +48,8 @@ class ReportControllerTest {
     private CustomOAuth2UserService customOAuth2UserService;
     @MockBean
     private OAuth2AuthenticationSuccessHandler oAuth2AuthenticationSuccessHandler;
+    @MockBean
+    private OAuth2AuthenticationFailureHandler oAuth2AuthenticationFailureHandler;
 
     @Test
     void reportingRequiresLogin() throws Exception {
