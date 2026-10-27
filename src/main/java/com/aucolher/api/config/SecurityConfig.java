@@ -71,6 +71,12 @@ public class SecurityConfig {
                 // porque "/api/events/*" também casaria com eles
                 .requestMatchers(HttpMethod.GET, "/api/events/mine", "/api/events/attending").authenticated()
                 .requestMatchers(HttpMethod.GET, "/api/events", "/api/events/*").permitAll()
+                // Campanhas: o mesmo esquema dos eventos ("mine" antes da regra pública)
+                .requestMatchers(HttpMethod.GET, "/api/campaigns/mine").authenticated()
+                .requestMatchers(HttpMethod.GET, "/api/campaigns", "/api/campaigns/*").permitAll()
+                // Quem chama o webhook é o Mercado Pago, sem token: a segurança é a
+                // assinatura x-signature, conferida no MercadoPagoWebhookValidator
+                .requestMatchers(HttpMethod.POST, "/api/webhooks/mercadopago").permitAll()
                 // Painel do admin: só a conta ADMIN (a autoridade ROLE_ADMIN vem do
                 // CustomUserDetailsService). Sem token → 401; logado sem ser admin → 403
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
