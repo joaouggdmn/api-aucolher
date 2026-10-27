@@ -5,11 +5,13 @@ import com.aucolher.api.admin.dto.ListingStatus;
 import com.aucolher.api.animal.dto.AnimalSummaryDTO;
 import com.aucolher.api.animal.entity.*;
 import com.aucolher.api.config.SecurityConfig;
+import com.aucolher.api.campaign.CampaignService;
 import com.aucolher.api.event.EventService;
 import com.aucolher.api.report.ReportService;
 import com.aucolher.api.security.CustomOAuth2UserService;
 import com.aucolher.api.security.CustomUserDetailsService;
 import com.aucolher.api.security.JwtService;
+import com.aucolher.api.security.OAuth2AuthenticationFailureHandler;
 import com.aucolher.api.security.OAuth2AuthenticationSuccessHandler;
 import com.aucolher.api.user.entity.User;
 import com.aucolher.api.user.entity.UserType;
@@ -49,6 +51,8 @@ class AdminControllerTest {
     @MockBean
     private EventService eventService;
     @MockBean
+    private CampaignService campaignService;
+    @MockBean
     private ReportService reportService;
 
     // Dependências da configuração de segurança real, importada acima
@@ -60,6 +64,8 @@ class AdminControllerTest {
     private CustomOAuth2UserService customOAuth2UserService;
     @MockBean
     private OAuth2AuthenticationSuccessHandler oAuth2AuthenticationSuccessHandler;
+    @MockBean
+    private OAuth2AuthenticationFailureHandler oAuth2AuthenticationFailureHandler;
 
     @Test
     void requiresLogin() throws Exception {
@@ -77,7 +83,9 @@ class AdminControllerTest {
                 .andExpect(status().isForbidden());
         mockMvc.perform(put("/api/admin/events/3").contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isForbidden());
-        verifyNoInteractions(adminService, moderationService);
+        mockMvc.perform(get("/api/admin/campaigns")).andExpect(status().isForbidden());
+        mockMvc.perform(delete("/api/admin/campaigns/4")).andExpect(status().isForbidden());
+        verifyNoInteractions(adminService, moderationService, campaignService);
     }
 
     @Test
@@ -139,6 +147,23 @@ class AdminControllerTest {
 
         mockMvc.perform(delete("/api/admin/events/3")).andExpect(status().isNoContent());
         verify(moderationService).removeEvent(3L);
+
+        mockMvc.perform(delete("/api/admin/campaigns/4")).andExpect(status().isNoContent());
+        verify(moderationService).removeCampaign(4L);
+    }
+
+    @Test
+    @WithMockUser(username = "admin@email.com", roles = "ADMIN")
+    void adminEditsACampaignWithTheNgoRules() throws Exception {
+        mockMvc.perform(put("/api/admin/campaigns/4").contentType(MediaType.APPLICATION_JSON).content("""
+                        { "title": "Ração", "description": "Ração para o inverno", "category": "FOOD", "goalAmount": 500 }
+                        """))
+                .andExpect(status().isOk());
+        verify(moderationService).updateCampaign(eq(4L), any(), eq("admin@email.com"));
+
+        // Mesmo corpo do PUT da ONG, com as mesmas validações
+        mockMvc.perform(put("/api/admin/campaigns/4").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -147,6 +172,8 @@ class AdminControllerTest {
         mockMvc.perform(get("/api/admin/stats")).andExpect(status().isOk());
         mockMvc.perform(get("/api/admin/users")).andExpect(status().isOk());
         mockMvc.perform(get("/api/admin/events")).andExpect(status().isOk());
+        mockMvc.perform(get("/api/admin/campaigns")).andExpect(status().isOk());
+        verify(campaignService).listForAdmin();
         mockMvc.perform(get("/api/admin/reports")).andExpect(status().isOk());
         verify(adminService).listUsers();
         verify(eventService).listForAdmin();
