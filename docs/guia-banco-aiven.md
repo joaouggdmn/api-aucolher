@@ -8,6 +8,9 @@ escola usam **o mesmo banco**, sem copiar dump nem rodar migrations de novo.
   `DB_PASSWORD`. Sem essas variáveis, a API usa o `aucolher_db` local de sempre.
 - **Onde ficam os dados de conexão:** no arquivo `.env.aiven`, que o Git ignora.
   O modelo está em `.env.aiven.example`.
+- **O script só conhece o que está no `.env.aiven`.** As variáveis da run configuration do
+  IntelliJ não valem quando a API sobe pelo `run-aiven.ps1`. Por isso as credenciais do login
+  com o Google (`GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET`) também vão no `.env.aiven`.
 
 ## Antes de ir para a escola (em casa)
 
@@ -41,7 +44,9 @@ Copie o modelo e coloque a senha:
 Copy-Item .env.aiven.example .env.aiven
 notepad .env.aiven
 ```
-Troque `COLE_A_SENHA_DO_AIVEN_AQUI` pela senha real, salve e feche. Cada linha tem o formato
+Troque `COLE_A_SENHA_DO_AIVEN_AQUI` pela senha real e as duas linhas `GOOGLE_*` pelas
+credenciais do Google (Google Cloud → *APIs e serviços* → *Credenciais*, ou a run configuration
+do IntelliJ, em **Environment variables**). Salve e feche. Cada linha tem o formato
 `NOME=valor`, sem aspas e sem espaços em volta do `=`.
 
 ### 4. Conferir o caminho do Java e do Maven
@@ -102,6 +107,7 @@ Aqui as variáveis são separadas por `;`.
 | `Arquivo ...\.env.aiven não encontrado` | Você ainda não criou o arquivo | Passo 3 |
 | `JAVA_HOME ... not found` / `mvn.cmd` não encontrado | Caminhos diferentes na escola | Passo 4 |
 | `Schema-validation: missing table/column` | O banco do Aiven está sem uma migration | Aplique o SQL que falta no Aiven |
+| Google: `The OAuth client was not found` (`401 invalid_client`) | Falta `GOOGLE_CLIENT_ID` no `.env.aiven`, e a API mandou o valor de exemplo | Passo 3 e suba a API de novo |
 | O serviço não responde de jeito nenhum | Serviço desligado | Veja o status no console do Aiven e ligue-o |
 
 ## Segurança
