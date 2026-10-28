@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
 public class CustomOAuth2UserService extends DefaultOAuth2UserService {
 
     private final UserRepository userRepository;
+    private final GooglePhotoDownloader googlePhoto;
 
     @Override
     public OAuth2User loadUser(OAuth2UserRequest userRequest) throws OAuth2AuthenticationException {
@@ -28,26 +29,51 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
 
         String email = oAuth2User.getAttribute("email");
         String name = oAuth2User.getAttribute("name");
-        // Foto do Google só na criação: a conta existente mantém a dela
         String picture = oAuth2User.getAttribute("picture");
 
         if (email == null) {
             throw new OAuth2AuthenticationException("Não foi possível obter o e-mail da conta Google");
         }
 
-        userRepository.findByEmail(email).orElseGet(() -> {
-            User newUser = User.builder()
+        syncAccount(email, name, picture);
+        return oAuth2User;
+    }
+
+    /**
+     * Primeiro acesso: cria a conta com uma cópia da foto do Google. Conta que
+     * já existe mantém a foto dela; só recebe a do Google quando ainda guarda o
+     * link do Google (contas criadas antes da cópia) ou quando é de pessoa e
+     * está sem foto.
+     */
+    void syncAccount(String email, String name, String picture) {
+        User user = userRepository.findByEmail(email).orElse(null);
+
+        if (user == null) {
+            userRepository.save(User.builder()
                     .name(name != null ? name : email)
                     .email(email)
                     .password(null)
                     .userType(UserType.PERSON)
                     .provider(AuthProvider.GOOGLE)
                     .active(true)
-                    .photoUrl(picture)
-                    .build();
-            return userRepository.save(newUser);
-        });
+                    .photoUrl(copyOrLink(picture))
+                    .build());
+        } else if (GooglePhotoDownloader.isGoogleHosted(user.getPhotoUrl())) {
+            // Se o download falhar, o link fica e a troca é tentada no próximo login
+            String copy = googlePhoto.download(picture);
+            if (copy != null) {
+                user.setPhotoUrl(copy);
+                userRepository.save(user);
+            }
+        } else if (user.getPhotoUrl() == null && user.getUserType() == UserType.PERSON) {
+            user.setPhotoUrl(copyOrLink(picture));
+            userRepository.save(user);
+        }
+    }
 
-        return oAuth2User;
+    /** Sem a cópia, vale o link do Google, como antes: melhor que ficar sem foto. */
+    private String copyOrLink(String picture) {
+        String copy = googlePhoto.download(picture);
+        return copy != null ? copy : picture;
     }
 }
