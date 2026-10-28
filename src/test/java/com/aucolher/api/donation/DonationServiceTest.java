@@ -230,6 +230,23 @@ class DonationServiceTest {
 
         assertThat(dto.campaign().title()).isEqualTo("Ração (título na doação)");
         assertThat(dto.campaign().removed()).isTrue();
+        assertThat(dto.campaign().removedByModeration()).isFalse();
+    }
+
+    @Test
+    void campaignRemovedByModerationTellsTheDonor() {
+        givenLogged(person());
+        when(donations.findById(259L)).thenReturn(Optional.of(donation(DonationStatus.APPROVED, LocalDateTime.now())));
+        Campaign c = campaign();
+        c.setDeleted(true);
+        c.setRemovedByModeration(true);
+        when(campaigns.findById(4L)).thenReturn(Optional.of(c));
+
+        DonationResponseDTO dto = service.getById(259L, auth());
+
+        assertThat(dto.campaign().title()).isEqualTo("Ração");
+        assertThat(dto.campaign().removed()).isTrue();
+        assertThat(dto.campaign().removedByModeration()).isTrue();
     }
 
     // ===================== Listas =====================

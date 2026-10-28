@@ -201,8 +201,10 @@ public class DonationService {
         // Campanha existente: título atual. Apagada de vez: vale o título guardado na doação.
         String title = c != null ? c.getTitle() : d.getCampaignTitle();
         boolean removed = c == null || c.isDeleted();
+        // A remoção pela moderação é sempre lógica: a campanha continua na tabela
+        boolean removedByModeration = c != null && c.isRemovedByModeration();
         DonationCampaignDTO campaign = new DonationCampaignDTO(
-                c != null ? c.getId() : null, title, ngoName, removed);
+                c != null ? c.getId() : null, title, ngoName, removed, removedByModeration);
         DonationDonorDTO donorDto = donor == null ? null
                 : new DonationDonorDTO(donor.getId(), donor.getName(), donor.getPhotoUrl());
         return new DonationResponseDTO(d.getId(), d.getAmount(), effectiveStatus(d),
