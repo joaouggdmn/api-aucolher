@@ -16,7 +16,6 @@ src/main/java/com/aucolher/api/
 ├── auth/                                   # Cadastro e login
 │   ├── AuthController.java
 │   ├── AuthService.java                    # Regra de negócio e hashing BCrypt
-│   ├── AdminAccountInitializer.java        # Cria a conta ADMIN ao subir (ADMIN_EMAIL / ADMIN_PASSWORD)
 │   └── dto/                                # LoginDTO, NgoRegistrationDTO, PersonRegistrationDTO, AuthResponseDTO
 ├── user/                                   # Conta do usuário e perfil ("Minha conta")
 │   ├── UserController.java
@@ -238,9 +237,6 @@ Depois de trazer as mudanças do Git, faça **Build → Rebuild Project** no Int
 | `JWT_EXPIRATION_MS`   | Validade do token em milissegundos           | `86400000` (24h)        |
 | `CORS_ALLOWED_ORIGINS`| Origens liberadas no CORS (separadas por vírgula) | `http://localhost:5173` |
 | `FRONTEND_URL`        | Para onde a API volta depois do login Google | `http://localhost:5173` |
-| `ADMIN_EMAIL`         | E-mail da conta admin criada ao subir        | — (sem padrão versionado) |
-| `ADMIN_PASSWORD`      | Senha da conta admin (mínimo 8 caracteres)   | — (sem padrão versionado) |
-| `ADMIN_NAME`          | Nome exibido da conta admin                  | `Administrador`         |
 | `MP_DEV_ACCESS_TOKEN` | Token de teste do Mercado Pago, usado por todas as ONGs (provisório, até a migração 009) | — |
 | `MP_SANDBOX`          | `true`: o pagador do PIX vai como `APRO` (o sandbox aprova sozinho) | `true` |
 | `MP_WEBHOOK_SECRET`   | Assinatura secreta dos webhooks do Mercado Pago | — (sem ela, todo webhook vira 401) |
@@ -248,19 +244,7 @@ Depois de trazer as mudanças do Git, faça **Build → Rebuild Project** no Int
 
 Sem `JWT_SECRET`, a API sobe gerando uma chave aleatória por execução (registra um WARN no log): dá para desenvolver, mas todo restart invalida os tokens já emitidos. Defina a variável em qualquer ambiente que não seja a sua máquina.
 
-**Conta admin.** Não existe cadastro público de admin: quem cria a conta `ADMIN` é a própria API, ao subir.
-- Ela usa `ADMIN_EMAIL` e `ADMIN_PASSWORD` (mínimo 8 caracteres) e só cria a conta se esse e-mail ainda não existir.
-- Se faltar alguma das duas variáveis, ou se a senha for curta, nenhuma conta é criada e o log registra um WARN com o motivo.
-- Uma conta que já existe nunca é alterada:
-  - trocar `ADMIN_PASSWORD` depois não muda a senha;
-  - um e-mail que já pertence a uma pessoa ou ONG não vira admin.
-
-No IntelliJ, defina as variáveis assim:
-1. Abra **Run → Edit Configurations**.
-2. Escolha a configuração da API.
-3. Em **Environment variables**, coloque `ADMIN_EMAIL=admin@aucolher.com;ADMIN_PASSWORD=uma-senha-forte`.
-
-Na primeira execução, o log mostra `Conta admin criada para ...`.
+**Conta admin.** Não existe cadastro público de admin, e a API não cria a conta ao subir. A conta `ADMIN` é inserida direto no banco (usuário com `user_type = 'ADMIN'`).
 
 **Mercado Pago (provisório).** O contrato manda cada ONG conectar a própria conta do Mercado Pago pelo OAuth (migração 009, `api-mercado-pago-ongs.md`), mas isso ainda não existe. Até lá, a `PlaceholderMercadoPagoAccountGateway` trata toda ONG como conectada e usa um único `MP_DEV_ACCESS_TOKEN`. Sem ele, as campanhas funcionam normalmente, mas doar responde 400 "Esta ONG não está recebendo doações no momento.".
 
@@ -847,7 +831,7 @@ A resposta traz também `complete`: `true` quando as 7 perguntas têm resposta.
 - **Normalização nos DTOs**: os construtores compactos dos records limpam os campos (trim, vazio vira null, CNPJ/CEP só com dígitos, rede social sem `@`, link com protocolo) antes da validação. A Service recebe dados já canônicos e cuida só da regra de negócio.
 - **CNPJ pelo Bean Validation**: `@CNPJ` do Hibernate Validator confere os dígitos verificadores; um `@Pattern` extra barra sequências repetidas (`00.000.000/0000-00`), que o `@CNPJ` sozinho aceita.
 - **Admin sem cadastro público**:
-  - a conta `ADMIN` nasce das variáveis de ambiente (`AdminAccountInitializer`), então nenhuma senha fica no repositório;
+  - a conta `ADMIN` é inserida direto no banco, então nenhuma senha fica no repositório;
   - `/api/admin/**` exige `ROLE_ADMIN`: sem token responde 401, e com token de pessoa ou ONG responde 403;
   - o repasse interno para `/error` é liberado (`DispatcherType.ERROR`). Sem isso, todo 403 da camada de segurança chegava ao cliente como 401, e o frontend desloga no 401.
 - **JWT mínimo**: o token carrega apenas o e-mail (subject) e a validade. Papel e id não viram claim para não circular desatualizados — quem responde por eles é o banco, relido a cada requisição autenticada.
