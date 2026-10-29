@@ -8,7 +8,9 @@ import java.time.LocalDateTime;
 
 /**
  * Uma conta no painel do admin. `active` = false é conta banida pela
- * moderação; `animalsCount` conta os anúncios dela em qualquer status.
+ * moderação ou, com `deletedAt` preenchido, excluída pela própria pessoa
+ * (anonimizada, sem volta); `animalsCount` conta os anúncios dela em
+ * qualquer status.
  */
 public record AdminUserDTO(
         Long id,
@@ -22,7 +24,8 @@ public record AdminUserDTO(
         boolean active,
         LocalDateTime createdAt,
         long animalsCount,
-        LocalDateTime moderatedAt
+        LocalDateTime moderatedAt,
+        LocalDateTime deletedAt
 ) {
 
     public static AdminUserDTO from(User user, long animalsCount) {
@@ -38,6 +41,7 @@ public record AdminUserDTO(
                 Boolean.TRUE.equals(user.getActive()),
                 user.getCreatedAt(),
                 animalsCount,
-                user.getModeratedAt());
+                user.getModeratedAt(),
+                user.getDeletedAt());
     }
 }
