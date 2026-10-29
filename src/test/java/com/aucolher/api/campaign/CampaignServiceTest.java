@@ -340,6 +340,34 @@ class CampaignServiceTest {
         assertThat(dto.acceptingDonations()).isFalse();
     }
 
+    // ===================== Exclusão da conta da ONG =====================
+
+    @Test
+    void deletingTheNgoAccountClosesAndHidesEveryCampaign() {
+        Campaign active = campaign(4L, 1L, "Ração");
+        Campaign closed = campaign(5L, 1L, "Castração");
+        LocalDateTime closedAt = LocalDateTime.now().minusMonths(1);
+        closed.setStatus(CampaignStatus.CLOSED);
+        closed.setClosedAt(closedAt);
+        when(campaigns.findByNgoIdAndDeletedFalseOrderByCreatedAtDesc(1L)).thenReturn(List.of(active, closed));
+
+        service.closeAndHideAllOf(1L);
+
+        verify(donations).cancelPendingByCampaign(4L);
+        verify(donations).cancelPendingByCampaign(5L);
+        assertThat(active.getStatus()).isEqualTo(CampaignStatus.CLOSED);
+        assertThat(active.getClosedAt()).isNotNull();
+        assertThat(closed.getClosedAt()).isEqualTo(closedAt);
+        assertThat(List.of(active, closed)).allSatisfy(c -> {
+            assertThat(c.isDeleted()).isTrue();
+            assertThat(c.isRemovedByModeration()).isFalse();
+        });
+        // Exclusão lógica mesmo sem doações: o histórico de quem doou continua legível
+        verify(campaigns).save(active);
+        verify(campaigns).save(closed);
+        verify(campaigns, never()).delete(any());
+    }
+
     // ===================== Apoio =====================
 
     private void givenLogged(User user) {

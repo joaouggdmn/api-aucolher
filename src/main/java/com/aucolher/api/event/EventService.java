@@ -166,6 +166,24 @@ public class EventService {
         event.setRemovedByModeration(true);
     }
 
+    /**
+     * Exclusão da conta da ONG: os eventos futuros saem como no "Excluir" de
+     * sempre. Com confirmados, viram CANCELLED (quem confirmou vê "Evento
+     * cancelado"); sem confirmados, são apagados de verdade. Os passados ficam.
+     */
+    @Transactional
+    public void cancelUpcomingOf(Long ngoId) {
+        List<Event> upcoming = events.findByNgoIdAndStatusAndDateGreaterThanEqualOrderByDateAscStartTimeAsc(
+                ngoId, EventStatus.ACTIVE, LocalDate.now());
+        for (Event event : upcoming) {
+            if (attendances.countByEventId(event.getId()) == 0) {
+                events.delete(event);
+            } else {
+                event.setStatus(EventStatus.CANCELLED);
+            }
+        }
+    }
+
     // -------------------------------------------------------------- presença
 
     @Transactional

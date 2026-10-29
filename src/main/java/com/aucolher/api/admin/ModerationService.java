@@ -151,7 +151,8 @@ public class ModerationService {
             throw new BusinessException("Contas de admin não podem ser banidas.");
         }
         account.setActive(false);
-        List<Report> resolved = reportService.resolveAgainstAccount(account.getId(), admin, LocalDateTime.now());
+        List<Report> resolved = reportService.resolveAgainstAccount(account.getId(), ReportResolution.ACCOUNT_BANNED,
+                admin, LocalDateTime.now());
         requestService.cancelAllForAccount(account.getId(), CancelReason.ACCOUNT_BANNED);
         return resolved;
     }

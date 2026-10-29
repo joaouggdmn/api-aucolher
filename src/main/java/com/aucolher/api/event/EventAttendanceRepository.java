@@ -25,4 +25,9 @@ public interface EventAttendanceRepository extends JpaRepository<EventAttendance
     @Modifying
     @Query("delete from EventAttendance a where a.eventId = :eventId and a.userId = :userId")
     int deleteAttendance(@Param("eventId") Long eventId, @Param("userId") Long userId);
+
+    /** Exclusão da conta: as presenças que ela confirmou (sempre em eventos de outras ONGs). */
+    @Modifying
+    @Query("delete from EventAttendance a where a.userId = :userId")
+    int deleteAllOf(@Param("userId") Long userId);
 }
