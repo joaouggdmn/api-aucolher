@@ -74,6 +74,10 @@ public class User {
     @Column(name = "moderated_by")
     private Long moderatedBy;
 
+    /** A própria pessoa excluiu a conta (nula se não): ela foi anonimizada e nunca é reativada. */
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
+
     // ===================== Perfil (comum e ONG) =====================
 
     /** URL do avatar (ou data URL da imagem comprimida, enquanto não há upload próprio). */
@@ -156,5 +160,40 @@ public class User {
     public void markModeratedBy(Long adminId) {
         moderatedAt = LocalDateTime.now();
         moderatedBy = adminId;
+    }
+
+    public boolean isDeleted() {
+        return deletedAt != null;
+    }
+
+    /**
+     * Exclusão da conta: a linha fica (o histórico das outras pessoas aponta
+     * para ela), mas sem nenhum dado pessoal. O e-mail e o CNPJ ficam livres
+     * para um novo cadastro; o domínio .invalid nunca recebe correio.
+     */
+    public void anonymize(LocalDateTime now) {
+        name = "Conta excluída";
+        email = "excluida-" + id + "@aucolher.invalid";
+        password = null;
+        cnpj = null;
+        photoUrl = null;
+        coverUrl = null;
+        bio = null;
+        instagram = null;
+        twitter = null;
+        facebook = null;
+        foundedYear = null;
+        team.clear();
+        visitingHours.clear();
+        cep = null;
+        street = null;
+        number = null;
+        complement = null;
+        district = null;
+        city = null;
+        state = null;
+        verified = false;
+        active = false;
+        deletedAt = now;
     }
 }

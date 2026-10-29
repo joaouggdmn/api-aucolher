@@ -282,6 +282,17 @@ public class AnimalService {
         return animalRepository.saveAndFlush(animal);
     }
 
+    /**
+     * Exclusão da conta: os anúncios no ar saem (INACTIVE); adotados, fora do
+     * ar e removidos não mudam. Não publica AnimalLeftListingEvent: quem
+     * exclui a conta já cancelou os pedidos ativos com ACCOUNT_DELETED.
+     */
+    @Transactional
+    public void unlistAllOf(Long ownerId) {
+        animalRepository.findByOwnerIdAndStatusOrderByCreatedAtDesc(ownerId, AnimalStatus.AVAILABLE)
+                .forEach(animal -> animal.setStatus(AnimalStatus.INACTIVE));
+    }
+
     /** "Excluir" o anúncio: exclusão lógica, o animal vira INACTIVE. */
     @Transactional
     public void deactivate(Long id, String ownerEmail) {

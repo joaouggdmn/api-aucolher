@@ -28,6 +28,11 @@ public interface FavoriteRepository extends JpaRepository<Favorite, Long> {
     @Query("DELETE FROM Favorite f WHERE f.user.id = :userId AND f.animal.id = :animalId")
     void remove(Long userId, Long animalId);
 
+    /** Exclusão da conta: todos os favoritos dela. */
+    @Modifying
+    @Query("DELETE FROM Favorite f WHERE f.user.id = :userId")
+    void removeAllOf(Long userId);
+
     /**
      * Favoritos com o animal e o dono já carregados, do mais recente para o
      * mais antigo — sem os anúncios escondidos e sem os de dono banido.

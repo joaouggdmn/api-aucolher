@@ -66,10 +66,19 @@ public class EventService {
                 user.getId(), EventStatus.ACTIVE));
     }
 
+    /**
+     * "Eventos que vou": o de ONG banida some, como nas rotas públicas; o de
+     * ONG que excluiu a conta fica, para quem confirmou ver "Evento cancelado".
+     */
     @Transactional(readOnly = true)
     public List<EventResponseDTO> listAttending(Authentication auth) {
         User user = currentUser(auth);
-        return toPublicDtos(events.findAttendedBy(user.getId()));
+        List<Event> attended = events.findAttendedBy(user.getId());
+        Map<Long, User> ngos = usersById(attended.stream().map(Event::getNgoId).toList());
+        return toDtos(attended.stream()
+                .filter(e -> ngos.containsKey(e.getNgoId())
+                        && (Boolean.TRUE.equals(ngos.get(e.getNgoId()).getActive()) || ngos.get(e.getNgoId()).isDeleted()))
+                .toList());
     }
 
     @Transactional(readOnly = true)
@@ -164,6 +173,24 @@ public class EventService {
         Event event = lockActive(id);
         event.setStatus(EventStatus.CANCELLED);
         event.setRemovedByModeration(true);
+    }
+
+    /**
+     * Exclusão da conta da ONG: os eventos futuros saem como no "Excluir" de
+     * sempre. Com confirmados, viram CANCELLED (quem confirmou vê "Evento
+     * cancelado"); sem confirmados, são apagados de verdade. Os passados ficam.
+     */
+    @Transactional
+    public void cancelUpcomingOf(Long ngoId) {
+        List<Event> upcoming = events.findByNgoIdAndStatusAndDateGreaterThanEqualOrderByDateAscStartTimeAsc(
+                ngoId, EventStatus.ACTIVE, LocalDate.now());
+        for (Event event : upcoming) {
+            if (attendances.countByEventId(event.getId()) == 0) {
+                events.delete(event);
+            } else {
+                event.setStatus(EventStatus.CANCELLED);
+            }
+        }
     }
 
     // -------------------------------------------------------------- presença

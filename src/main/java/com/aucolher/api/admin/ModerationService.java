@@ -83,7 +83,10 @@ public class ModerationService {
         return campaignService.updateByModeration(campaignId, body, findAdmin(adminEmail).getId());
     }
 
-    /** Banir (`active: false`) ou reativar (`active: true`) uma conta direto da lista do admin. */
+    /**
+     * Banir (`active: false`) ou reativar (`active: true`) uma conta direto da
+     * lista do admin. A conta excluída pela própria pessoa não volta.
+     */
     @Transactional
     public AdminUserDTO setUserActive(Long userId, Boolean active, String adminEmail) {
         if (active == null) {
@@ -92,6 +95,9 @@ public class ModerationService {
         User account = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Conta não encontrada."));
 
+        if (active && account.isDeleted()) {
+            throw new BusinessException("Contas excluídas não podem ser reativadas.");
+        }
         if (active) {
             account.setActive(true);
         } else {
@@ -151,7 +157,8 @@ public class ModerationService {
             throw new BusinessException("Contas de admin não podem ser banidas.");
         }
         account.setActive(false);
-        List<Report> resolved = reportService.resolveAgainstAccount(account.getId(), admin, LocalDateTime.now());
+        List<Report> resolved = reportService.resolveAgainstAccount(account.getId(), ReportResolution.ACCOUNT_BANNED,
+                admin, LocalDateTime.now());
         requestService.cancelAllForAccount(account.getId(), CancelReason.ACCOUNT_BANNED);
         return resolved;
     }

@@ -173,6 +173,22 @@ class ReportServiceTest {
         });
     }
 
+    @Test
+    void anAccountDeletingItselfArchivesTheReportsAgainstItWithNoAdmin() {
+        Report report = pendingReport(1L);
+        when(reportRepository.findAgainstAccount(2L, ReportStatus.PENDING)).thenReturn(List.of(report));
+        LocalDateTime now = LocalDateTime.now();
+
+        List<Report> resolved = reportService.resolveAgainstAccount(2L, ReportResolution.DISMISSED, null, now);
+
+        assertThat(resolved).singleElement().satisfies(archived -> {
+            assertThat(archived.getStatus()).isEqualTo(ReportStatus.RESOLVED);
+            assertThat(archived.getResolution()).isEqualTo(ReportResolution.DISMISSED);
+            assertThat(archived.getResolvedAt()).isEqualTo(now);
+            assertThat(archived.getResolvedBy()).isNull();
+        });
+    }
+
     // ===================== Fixtures =====================
 
     private void assertCreateFails(NewReportDTO body, String message) {

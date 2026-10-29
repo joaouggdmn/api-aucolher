@@ -175,6 +175,26 @@ public class CampaignService {
         campaigns.save(c);
     }
 
+    /**
+     * Exclusão da conta da ONG: todas as campanhas dela viram exclusão lógica,
+     * mesmo sem doações, e as ativas são encerradas antes. Os PIX ainda não
+     * pagos caem, como no "Encerrar". As doações aprovadas continuam no
+     * histórico de quem doou, com a campanha "removida".
+     */
+    @Transactional
+    public void closeAndHideAllOf(Long ngoId) {
+        LocalDateTime now = LocalDateTime.now();
+        for (Campaign c : campaigns.findByNgoIdAndDeletedFalseOrderByCreatedAtDesc(ngoId)) {
+            donations.cancelPendingByCampaign(c.getId());   // limpa o contexto: o save abaixo faz o merge
+            if (!isClosed(c)) {
+                c.setStatus(CampaignStatus.CLOSED);
+                c.setClosedAt(now);
+            }
+            c.setDeleted(true);
+            campaigns.save(c);
+        }
+    }
+
     // ---------------------------------------------------------------- regras
 
     private boolean parseClosed(String status) {
