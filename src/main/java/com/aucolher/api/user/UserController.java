@@ -1,5 +1,6 @@
 package com.aucolher.api.user;
 
+import com.aucolher.api.user.dto.AccountDeletionDTO;
 import com.aucolher.api.user.dto.ProfileUpdateDTO;
 import com.aucolher.api.user.dto.PublicProfileDTO;
 import com.aucolher.api.user.dto.UserResponseDTO;
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.*;
 public class UserController {
 
     private final UserService userService;
+    private final AccountDeletionService accountDeletionService;
 
     /** Público: página de perfil de uma ONG ou pessoa, sem e-mail de login. */
     @GetMapping("/{id}/public-profile")
@@ -32,5 +34,17 @@ public class UserController {
     public ResponseEntity<UserResponseDTO> updateProfile(@AuthenticationPrincipal UserDetails loggedUser,
                                                               @Valid @RequestBody ProfileUpdateDTO dto) {
         return ResponseEntity.ok(userService.updateProfile(loggedUser.getUsername(), dto));
+    }
+
+    /**
+     * Exclui a conta logada, sem volta. POST, e não DELETE, porque DELETE com
+     * corpo é mal suportado por proxies e clientes HTTP. Depois disso o token
+     * da conta para de valer.
+     */
+    @PostMapping("/me/deletion")
+    public ResponseEntity<Void> deleteAccount(@AuthenticationPrincipal UserDetails loggedUser,
+                                              @RequestBody(required = false) AccountDeletionDTO body) {
+        accountDeletionService.deleteAccount(loggedUser.getUsername(), body);
+        return ResponseEntity.noContent().build();
     }
 }
