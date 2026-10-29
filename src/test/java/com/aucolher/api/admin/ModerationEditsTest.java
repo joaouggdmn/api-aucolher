@@ -26,6 +26,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
@@ -153,6 +154,18 @@ class ModerationEditsTest {
         assertThatThrownBy(() -> userService().findForModeration(9L))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Contas de admin não são editadas pelo painel.");
+    }
+
+    @Test
+    void deletedAccountsAreNotEdited() {
+        User deleted = person(AuthProvider.LOCAL);
+        deleted.anonymize(LocalDateTime.now());
+        when(userRepository.findById(5L)).thenReturn(Optional.of(deleted));
+
+        assertThatThrownBy(() -> userService().updateByModeration(5L, "maria@email.com", profile("Maria"), ADMIN_ID))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Contas excluídas não podem ser editadas.");
+        assertThat(deleted.getName()).isEqualTo("Conta excluída");
     }
 
     // ===================== Fixtures =====================

@@ -63,7 +63,8 @@ class ModerationServiceTest {
 
         assertThat(banned.active()).isFalse();
         assertThat(banned.animalsCount()).isEqualTo(2L);
-        verify(reportService).resolveAgainstAccount(eq(5L), eq(admin), any(LocalDateTime.class));
+        verify(reportService).resolveAgainstAccount(eq(5L), eq(ReportResolution.ACCOUNT_BANNED), eq(admin),
+                any(LocalDateTime.class));
         verify(requestService).cancelAllForAccount(5L, CancelReason.ACCOUNT_BANNED);
     }
 
@@ -75,6 +76,32 @@ class ModerationServiceTest {
 
         assertThat(moderationService.setUserActive(5L, true, ADMIN_EMAIL).active()).isTrue();
         verifyNoInteractions(reportService, requestService);
+    }
+
+    @Test
+    void aDeletedAccountIsNeverReactivated() {
+        User deleted = account(5L, UserType.PERSON);
+        deleted.anonymize(LocalDateTime.now());
+        when(userRepository.findById(5L)).thenReturn(Optional.of(deleted));
+
+        assertThatThrownBy(() -> moderationService.setUserActive(5L, true, ADMIN_EMAIL))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Contas excluídas não podem ser reativadas.");
+        assertThat(deleted.getActive()).isFalse();
+    }
+
+    @Test
+    void theAdminListShowsWhenTheAccountWasDeleted() {
+        User deleted = account(5L, UserType.PERSON);
+        LocalDateTime now = LocalDateTime.now();
+        deleted.anonymize(now);
+
+        AdminUserDTO dto = AdminUserDTO.from(deleted, 0);
+
+        assertThat(dto.name()).isEqualTo("Conta excluída");
+        assertThat(dto.active()).isFalse();
+        assertThat(dto.deletedAt()).isEqualTo(now);
+        assertThat(AdminUserDTO.from(account(6L, UserType.PERSON), 0).deletedAt()).isNull();
     }
 
     @Test
@@ -102,10 +129,11 @@ class ModerationServiceTest {
         User admin = givenAdmin();
         when(reportService.findReport(12L)).thenReturn(report);
         when(userRepository.findById(2L)).thenReturn(Optional.of(owner));
-        when(reportService.resolveAgainstAccount(eq(2L), eq(admin), any())).thenAnswer(invocation -> {
-            report.resolve(ReportResolution.ACCOUNT_BANNED, admin, invocation.getArgument(2));
-            return List.of(report);
-        });
+        when(reportService.resolveAgainstAccount(eq(2L), eq(ReportResolution.ACCOUNT_BANNED), eq(admin), any()))
+                .thenAnswer(invocation -> {
+                    report.resolve(ReportResolution.ACCOUNT_BANNED, admin, invocation.getArgument(3));
+                    return List.of(report);
+                });
 
         List<ReportDTO> resolved = moderationService.banByReport(12L, ADMIN_EMAIL);
 

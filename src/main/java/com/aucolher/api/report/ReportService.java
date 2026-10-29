@@ -102,10 +102,14 @@ public class ReportService {
         return pending;
     }
 
-    /** Banimento: resolve as pendentes contra o perfil da conta e contra os anúncios dela. */
-    public List<Report> resolveAgainstAccount(Long userId, User admin, LocalDateTime now) {
+    /**
+     * Resolve as pendentes contra o perfil da conta e contra os anúncios dela:
+     * ACCOUNT_BANNED no banimento; DISMISSED, sem admin, quando a própria
+     * conta é excluída (o conteúdo já saiu do ar).
+     */
+    public List<Report> resolveAgainstAccount(Long userId, ReportResolution resolution, User admin, LocalDateTime now) {
         List<Report> pending = reportRepository.findAgainstAccount(userId, ReportStatus.PENDING);
-        pending.forEach(report -> report.resolve(ReportResolution.ACCOUNT_BANNED, admin, now));
+        pending.forEach(report -> report.resolve(resolution, admin, now));
         return pending;
     }
 
