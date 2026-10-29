@@ -20,9 +20,10 @@ src/main/java/com/aucolher/api/
 ├── user/                                   # Conta do usuário e perfil ("Minha conta")
 │   ├── UserController.java
 │   ├── UserService.java
+│   ├── AccountDeletionService.java         # Excluir a própria conta: cancela, tira do ar e anonimiza
 │   ├── UserRepository.java
 │   ├── entity/                             # User, TeamMember, VisitingHour, UserType, AuthProvider
-│   └── dto/                                # ProfileUpdateDTO, UserResponseDTO, PublicProfileDTO, TeamMemberDTO, VisitingHourDTO
+│   └── dto/                                # ProfileUpdateDTO, UserResponseDTO, PublicProfileDTO, TeamMemberDTO, VisitingHourDTO, AccountDeletionDTO
 ├── animal/                                 # Anúncios de adoção
 │   ├── AnimalController.java
 │   ├── AnimalService.java                  # Regras: só o dono altera, ADOPTED é definitivo, inativo só o dono vê
@@ -185,7 +186,7 @@ Nenhum dado existente muda: os pedidos já concluídos ficam com o score nulo (e
 
 #### Denúncias e moderação (migração 014)
 
-A 014 cria a tabela `reports` (denúncias de anúncios e perfis, com a cópia do alvo e a decisão do admin) e prepara a moderação: `animals.status` passa a aceitar `REMOVED`, `adoption_requests.cancel_reason` passa a aceitar `ACCOUNT_BANNED` e `LISTING_REMOVED` (e já `ACCOUNT_DELETED`, da futura exclusão de conta), e `events` ganha `removed_by_moderation`. O banimento usa a coluna `users.active`, que já existia. Sem ela a API não sobe (`Schema-validation: missing table [reports]`):
+A 014 cria a tabela `reports` (denúncias de anúncios e perfis, com a cópia do alvo e a decisão do admin) e prepara a moderação: `animals.status` passa a aceitar `REMOVED`, `adoption_requests.cancel_reason` passa a aceitar `ACCOUNT_BANNED` e `LISTING_REMOVED` (e já `ACCOUNT_DELETED`, usado pela exclusão de conta da 013), e `events` ganha `removed_by_moderation`. O banimento usa a coluna `users.active`, que já existia. Sem ela a API não sobe (`Schema-validation: missing table [reports]`):
 
 ```bash
 psql -U postgres -h localhost -d aucolher_db -f sql/migrations/014_reports_moderation.sql
@@ -215,13 +216,23 @@ Só acrescenta colunas nulas e pode ser repetida.
 
 #### Sem e-mail institucional (migração 015)
 
-A 015 apaga a coluna `users.institutional_email`: o contato público da ONG passa a ser o próprio e-mail de login. (As migrações 009 a 013 estão reservadas para as próximas sprints.) A API sobe com ou sem ela, porque o `validate` não reclama de coluna sobrando, mas rode para o banco ficar igual ao `schema.sql`:
+A 015 apaga a coluna `users.institutional_email`: o contato público da ONG passa a ser o próprio e-mail de login. (As migrações 009 a 011 estão reservadas para as próximas sprints.) A API sobe com ou sem ela, porque o `validate` não reclama de coluna sobrando, mas rode para o banco ficar igual ao `schema.sql`:
 
 ```bash
 psql -U postgres -h localhost -d aucolher_db -f sql/migrations/015_drop_institutional_email.sql
 ```
 
 Apaga os e-mails institucionais já gravados. Pode ser repetida.
+
+#### Exclusão de conta (migração 013)
+
+A 013 acrescenta `users.deleted_at`, preenchida quando a pessoa ou a ONG exclui a própria conta. A linha não é apagada, e sim anonimizada (sem senha, sem CNPJ). Por isso as constraints `chk_users_ngo_has_cnpj` e `chk_users_local_has_password` são recriadas para valer só nas contas não excluídas, e a nova `chk_users_deleted_inactive` garante que conta excluída fica inativa. Sem ela a API não sobe (`Schema-validation: missing column [deleted_at]`):
+
+```bash
+psql -U postgres -h localhost -d aucolher_db -f sql/migrations/013_account_deletion.sql
+```
+
+Nenhum dado muda. Pode ser repetida.
 
 Depois de trazer as mudanças do Git, faça **Build → Rebuild Project** no IntelliJ (ou `mvn clean`): classes antigas compiladas (`Usuario`, `Animal` com campos em português) ficam na pasta `target/` e impedem a API de subir.
 
@@ -372,6 +383,8 @@ Use o token nas requisições autenticadas: `Authorization: Bearer {token}`.
 
 **Conta suspensa pela moderação** (`users.active = false`): o login (tradicional ou Google) responde **403** com `message` "Esta conta foi suspensa pela moderação do AUcolher." — só depois de a senha conferir. Um token emitido antes do banimento também deixa de valer na hora: qualquer requisição com ele responde o mesmo 403, e o frontend desloga com o aviso.
 
+**Conta excluída pela própria pessoa** (`users.deleted_at` preenchida): o e-mail antigo não existe mais, então o login responde 401 como um e-mail desconhecido, e o token antigo vira uma requisição sem login (401 nas rotas protegidas). O mesmo e-mail (e, na ONG, o mesmo CNPJ) pode fazer um cadastro novo.
+
 ### Edição do perfil ("Minha conta")
 ```
 PUT /api/users/me
@@ -402,6 +415,33 @@ Content-Type: application/json
 A conta editada é sempre a do token — não há id na rota. É uma substituição completa: campo opcional que não vier é apagado, e `team`/`visitingHours` substituem as listas inteiras (na ordem enviada). Usuário comum grava só `name`, `photoUrl`, `bio`, `cep`, `city` e `state`; o resto é ignorado. Para ONG o endereço continua obrigatório.
 
 `coverUrl` é o **banner** do perfil público, **só para ONG** e opcional: uma URL `http(s)://` ou um data URL `data:image/(jpeg|png|webp);base64,...` com até 600.000 caracteres. Ausente ou `null` remove o banner (por isso o frontend sempre manda o valor atual). Erros (400): conta de usuário comum com banner → "Só ONGs podem ter banner no perfil."; formato inválido → "Envie o banner como imagem JPG, PNG ou WebP."; grande demais → "O banner é grande demais.". E-mail, senha e CNPJ não mudam por aqui. Responde com o mesmo objeto `user` das rotas de autenticação — que também traz `team` e `visitingHours`, para o frontend não depender de nada guardado no navegador.
+
+### Excluir a própria conta
+```
+POST /api/users/me/deletion
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{ "password": "minhaSenha1" }
+```
+
+Conta do Google sem senha confirma com `{ "confirmation": "EXCLUIR" }`. Responde **204** e não dá para desfazer. É POST, e não DELETE, porque DELETE com corpo é mal suportado por proxies e clientes HTTP.
+
+Tudo numa transação, nesta ordem:
+1. Os pedidos de adoção ativos (`PENDING`, `ACCEPTED`, `AWAITING_DELIVERY`) em que a conta é dona do animal ou adotante viram `CANCELLED` com `cancelReason: ACCOUNT_DELETED`.
+2. Os animais `AVAILABLE` viram `INACTIVE`; os outros não mudam.
+3. Na ONG, todas as campanhas viram exclusão lógica (`deleted`), e as ativas são encerradas antes. Os PIX pendentes são cancelados, e as doações aprovadas continuam no histórico de quem doou, com a campanha "removida".
+4. Na ONG, os eventos futuros com confirmados viram `CANCELLED` (quem confirmou ainda os vê em `/api/events/attending`); os sem confirmados são apagados; os passados ficam.
+5. O quiz do AUmatch, os favoritos e as presenças confirmadas são apagados.
+6. A conta é anonimizada:
+   - o nome vira "Conta excluída" e o e-mail, `excluida-{id}@aucolher.invalid`;
+   - senha, foto, banner, bio, CNPJ, redes, ano de fundação, equipe, horários de visita e endereço são apagados;
+   - o selo de verificada sai;
+   - `active` vira `false` e `deleted_at` é preenchida.
+   Pedidos concluídos, avaliações e doações das outras pessoas continuam, com o autor "Conta excluída".
+7. As denúncias pendentes contra o perfil ou os anúncios da conta são arquivadas (`DISMISSED`, sem admin).
+
+Erros: conta `ADMIN` → 403 "A conta de administrador não pode ser excluída."; senha ausente ou errada → 400 "Senha incorreta."; conta sem senha e `confirmation` diferente de `EXCLUIR` → 400 "Digite EXCLUIR para confirmar.".
 
 ### Perfil público
 ```
@@ -710,7 +750,7 @@ Tudo em `/api/admin/**` é só da conta ADMIN: sem token, 401; com token de pess
 | Método e rota | O que faz |
 |---|---|
 | `GET /api/admin/stats` | Números e gráficos da Visão geral (abaixo) |
-| `GET /api/admin/users` | Contas de pessoas e ONGs (sem admins), mais recentes primeiro, com `active` e `animalsCount` |
+| `GET /api/admin/users` | Contas de pessoas e ONGs (sem admins), mais recentes primeiro, com `active`, `animalsCount` e `deletedAt` (preenchida na conta que a própria pessoa excluiu, que aparece como "Conta excluída") |
 | `GET /api/admin/animals` | Todos os anúncios, em qualquer status: o card da vitrine (com `owner.active`) + `listingStatus` (`AVAILABLE`, `IN_PROGRESS`, `ADOPTED`, `INACTIVE` ou `REMOVED`). `IN_PROGRESS` = disponível com pedido aceito ou aguardando entrega |
 | `GET /api/admin/events` | Todos os eventos, da data mais distante para a mais antiga, com `ngo.active` e `removedByModeration` |
 | `GET /api/admin/campaigns` | Todas as campanhas (ativas, encerradas e excluídas), mais recentes primeiro, com `removed`, `removedByModeration`, `moderatedAt` e `ngo.active` |
@@ -718,9 +758,9 @@ Tudo em `/api/admin/**` é só da conta ADMIN: sem token, 401; com token de pess
 | `GET /api/admin/reports` | Todas as denúncias, em qualquer situação, com quem denunciou (`reporter`) |
 | `POST /api/admin/reports/{id}/dismiss` | Arquiva o caso (esta denúncia e as outras pendentes do mesmo alvo) e devolve as arquivadas |
 | `POST /api/admin/reports/{id}/ban` | Bane a conta por trás do caso (o perfil denunciado ou o dono do anúncio) e devolve as denúncias resolvidas |
-| `PATCH /api/admin/users/{id}/status` | `{ "active": false }` bane, `{ "active": true }` reativa; devolve a conta |
+| `PATCH /api/admin/users/{id}/status` | `{ "active": false }` bane, `{ "active": true }` reativa; devolve a conta. Conta excluída não volta: 400 "Contas excluídas não podem ser reativadas." |
 | `GET /api/admin/users/{id}` | A conta inteira para editar: os campos de "Minha conta" (com o `email` de login e `moderatedAt`) + `active` |
-| `PUT /api/admin/users/{id}` | `{ "email": "...", "profile": { ...o corpo de PUT /api/users/me } }` — edita o perfil e o e-mail de login |
+| `PUT /api/admin/users/{id}` | `{ "email": "...", "profile": { ...o corpo de PUT /api/users/me } }` — edita o perfil e o e-mail de login; conta excluída → 400 "Contas excluídas não podem ser editadas." |
 | `PUT /api/admin/animals/{id}` | O corpo de `PUT /api/animals/{id}` — edita o anúncio (ativo, fora do ar ou adotado; removido não muda) |
 | `PUT /api/admin/events/{id}` | O corpo de `PUT /api/events/{id}` — edita o evento, com as regras da ONG (só ativo e que ainda não aconteceu) |
 | `PUT /api/admin/campaigns/{id}` | O corpo de `PUT /api/campaigns/{id}` — edita a campanha, com as regras da ONG (não edita encerrada, uma urgente ativa por ONG); 404 se excluída |
@@ -851,4 +891,5 @@ A resposta traz também `complete`: `true` quando as 7 perguntas têm resposta.
 - **Sem cópia congelada**: o pedido lê o adotante, o animal e as respostas do quiz ao vivo, então o dono vê sempre a compatibilidade atual.
 - **Vagas de evento sem corrida**: confirmar presença, editar e excluir leem o evento com `SELECT ... FOR UPDATE`, então dois cliques ao mesmo tempo não passam da capacidade.
 - **Evento com confirmados não some**: excluir um evento que já tem presenças só muda o status para `CANCELLED`, e quem confirmou continua vendo o evento em `/api/events/attending`.
-- **Ainda fora da API**: o chat (o frontend guarda as mensagens por id de pedido) e a moderação (banir e remover anúncio) continuam no frontend.
+- **Exclusão de conta é anonimização**: a linha de `users` fica, porque pedidos, avaliações e doações das outras pessoas apontam para ela. Quando o chat (011), a recuperação de senha (010) e a conta Mercado Pago de cada ONG (009) chegarem, `AccountDeletionService` precisa apagar também as marcas de leitura, os links de senha e a conta vinculada.
+- **Ainda fora da API**: o chat (o frontend ainda simula as mensagens), a recuperação de senha e a conexão de cada ONG com o próprio Mercado Pago.
