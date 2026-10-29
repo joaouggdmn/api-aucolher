@@ -86,11 +86,15 @@ public class UserService {
      * "Minha conta") e, se preciso, o e-mail de login. Trocar o e-mail
      * derruba a sessão da conta (o token é pelo e-mail): ela entra de novo
      * com o e-mail novo. Conta Google não troca de e-mail, porque o próximo
-     * login pelo Google criaria outra conta.
+     * login pelo Google criaria outra conta. Conta excluída não é editada:
+     * ela foi anonimizada de propósito.
      */
     @Transactional
     public User updateByModeration(Long id, String email, ProfileUpdateDTO dto, Long adminId) {
         User user = findForModeration(id);
+        if (user.isDeleted()) {
+            throw new BusinessException("Contas excluídas não podem ser editadas.");
+        }
         changeEmail(user, email);
         applyProfile(user, dto);
         user.markModeratedBy(adminId);

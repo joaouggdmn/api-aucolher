@@ -79,6 +79,32 @@ class ModerationServiceTest {
     }
 
     @Test
+    void aDeletedAccountIsNeverReactivated() {
+        User deleted = account(5L, UserType.PERSON);
+        deleted.anonymize(LocalDateTime.now());
+        when(userRepository.findById(5L)).thenReturn(Optional.of(deleted));
+
+        assertThatThrownBy(() -> moderationService.setUserActive(5L, true, ADMIN_EMAIL))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Contas excluídas não podem ser reativadas.");
+        assertThat(deleted.getActive()).isFalse();
+    }
+
+    @Test
+    void theAdminListShowsWhenTheAccountWasDeleted() {
+        User deleted = account(5L, UserType.PERSON);
+        LocalDateTime now = LocalDateTime.now();
+        deleted.anonymize(now);
+
+        AdminUserDTO dto = AdminUserDTO.from(deleted, 0);
+
+        assertThat(dto.name()).isEqualTo("Conta excluída");
+        assertThat(dto.active()).isFalse();
+        assertThat(dto.deletedAt()).isEqualTo(now);
+        assertThat(AdminUserDTO.from(account(6L, UserType.PERSON), 0).deletedAt()).isNull();
+    }
+
+    @Test
     void statusIsRequiredAndAdminsCannotBeBanned() {
         assertThatThrownBy(() -> moderationService.setUserActive(5L, null, ADMIN_EMAIL))
                 .hasMessage("Informe se a conta fica ativa.");
