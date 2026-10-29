@@ -63,7 +63,8 @@ class ModerationServiceTest {
 
         assertThat(banned.active()).isFalse();
         assertThat(banned.animalsCount()).isEqualTo(2L);
-        verify(reportService).resolveAgainstAccount(eq(5L), eq(admin), any(LocalDateTime.class));
+        verify(reportService).resolveAgainstAccount(eq(5L), eq(ReportResolution.ACCOUNT_BANNED), eq(admin),
+                any(LocalDateTime.class));
         verify(requestService).cancelAllForAccount(5L, CancelReason.ACCOUNT_BANNED);
     }
 
@@ -102,10 +103,11 @@ class ModerationServiceTest {
         User admin = givenAdmin();
         when(reportService.findReport(12L)).thenReturn(report);
         when(userRepository.findById(2L)).thenReturn(Optional.of(owner));
-        when(reportService.resolveAgainstAccount(eq(2L), eq(admin), any())).thenAnswer(invocation -> {
-            report.resolve(ReportResolution.ACCOUNT_BANNED, admin, invocation.getArgument(2));
-            return List.of(report);
-        });
+        when(reportService.resolveAgainstAccount(eq(2L), eq(ReportResolution.ACCOUNT_BANNED), eq(admin), any()))
+                .thenAnswer(invocation -> {
+                    report.resolve(ReportResolution.ACCOUNT_BANNED, admin, invocation.getArgument(3));
+                    return List.of(report);
+                });
 
         List<ReportDTO> resolved = moderationService.banByReport(12L, ADMIN_EMAIL);
 

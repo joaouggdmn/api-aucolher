@@ -291,6 +291,19 @@ class AnimalServiceTest {
         verifyNoInteractions(eventPublisher);
     }
 
+    @Test
+    void deletingTheAccountTakesOnlyTheListedAnimalsOffline() {
+        Animal listed = animal(AnimalStatus.AVAILABLE);
+        when(animalRepository.findByOwnerIdAndStatusOrderByCreatedAtDesc(1L, AnimalStatus.AVAILABLE))
+                .thenReturn(List.of(listed));
+
+        animalService.unlistAllOf(1L);
+
+        assertThat(listed.getStatus()).isEqualTo(AnimalStatus.INACTIVE);
+        // Os pedidos já foram cancelados com ACCOUNT_DELETED: nada de ANIMAL_UNAVAILABLE
+        verifyNoInteractions(eventPublisher);
+    }
+
     // ===================== Dados de teste =====================
 
     private static User user(Long id, String email) {
