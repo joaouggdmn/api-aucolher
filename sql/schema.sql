@@ -13,10 +13,17 @@
 -- português)? Não rode este: aplique, em ordem, os scripts de
 -- sql/migrations/ — eles renomeiam tudo sem perder os dados.
 --
+-- Banco já criado pela versão anterior em inglês (sem as
+-- migrações 009 a 011)? Também não rode este: aplique só
+--   009_mercado_pago_accounts.sql  (conta Mercado Pago da ONG)
+--   010_password_security.sql      (recuperar/alterar senha)
+--   011_chat.sql                   (chat dos pedidos de adoção)
+--
 -- Espelha as entidades do Spring Boot (User, TeamMember,
 -- VisitingHour, Animal, Favorite, MatchProfile, AdoptionRequest,
--- AdoptionReview, Event, EventAttendance, Report, Campaign,
--- Donation) e a seção 6 de
+-- AdoptionReview, ChatMessage, ChatRead, Event, EventAttendance,
+-- Report, Campaign, Donation, MercadoPagoAccount,
+-- PasswordResetToken) e a seção 6 de
 -- docs/regras-de-negocio.md.
 -- Cópia mantida no backend em sql/schema.sql.
 -- ============================================================
@@ -45,6 +52,7 @@ CREATE TABLE IF NOT EXISTS users (
     name                 VARCHAR(150)  NOT NULL,
     email                VARCHAR(150)  NOT NULL,
     password             VARCHAR(255),
+    password_changed_at  TIMESTAMP,
     user_type            VARCHAR(20)   NOT NULL,
     provider             VARCHAR(20)   NOT NULL DEFAULT 'LOCAL',
     active               BOOLEAN       NOT NULL DEFAULT TRUE,
@@ -90,7 +98,8 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE INDEX IF NOT EXISTS idx_users_user_type ON users (user_type);
 
 COMMENT ON TABLE  users                     IS 'Contas da plataforma: ONGs/abrigos, usuários comuns e administradores';
-COMMENT ON COLUMN users.password            IS 'Hash BCrypt — nulo para contas criadas via OAuth2 (Google)';
+COMMENT ON COLUMN users.password            IS 'Hash BCrypt — nulo para contas criadas via OAuth2 (Google) que ainda não criaram senha; conta do Google que define senha entra pelos dois caminhos (provider continua GOOGLE)';
+COMMENT ON COLUMN users.password_changed_at IS 'Última troca ou redefinição de senha; tokens JWT com iat anterior são recusados (derruba as sessões)';
 COMMENT ON COLUMN users.active              IS 'false = conta suspensa pela moderação (ou excluída, com deleted_at): não entra e o conteúdo some das rotas públicas';
 COMMENT ON COLUMN users.moderated_at        IS 'Última edição do perfil feita pelo admin (nulo se nunca houve)';
 COMMENT ON COLUMN users.moderated_by        IS 'O admin que fez a última edição do perfil';
@@ -106,6 +115,28 @@ COMMENT ON COLUMN users.facebook            IS 'Link completo da página';
 COMMENT ON COLUMN users.founded_year        IS 'Ano de fundação da ONG (opcional) — "Fundada em [ano]" no perfil; nulo para usuário comum';
 COMMENT ON COLUMN users.cep                 IS 'Apenas os 8 dígitos';
 COMMENT ON COLUMN users.state               IS 'Sigla da UF, ex: SC';
+
+-- ------------------------------------------------------------
+-- password_reset_tokens — links de "Esqueci minha senha" e de
+-- "Alterar senha"/"Criar senha" em Minha conta. Só o hash
+-- (SHA-256) do token fica no banco; uso único; vale 30 minutos.
+-- Pedir um link novo marca os anteriores não usados como usados
+-- (used_at). Limite de 1 e-mail por minuto por conta (created_at).
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    id          BIGSERIAL  PRIMARY KEY,
+    user_id     BIGINT     NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    token_hash  CHAR(64)   NOT NULL UNIQUE,
+    created_at  TIMESTAMP  NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at  TIMESTAMP  NOT NULL,
+    used_at     TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user ON password_reset_tokens (user_id, created_at);
+
+COMMENT ON TABLE  password_reset_tokens            IS 'Links de redefinição de senha (Esqueci minha senha)';
+COMMENT ON COLUMN password_reset_tokens.token_hash IS 'SHA-256 (hex) do token enviado por e-mail — o token puro nunca é gravado';
+COMMENT ON COLUMN password_reset_tokens.used_at    IS 'Preenchido quando o link é usado ou substituído por um novo';
 
 -- ------------------------------------------------------------
 -- ngo_team — "Equipe" do perfil de ONG (seção 6.2)
@@ -285,6 +316,7 @@ COMMENT ON COLUMN match_profiles.preferred_size   IS 'Porte preferido; se estive
 -- sistema, com o motivo em cancel_reason). Depois de CONCLUDED, o
 -- animal pode voltar ao doador (RETURNED) ou ser republicado pelo
 -- adotante (REHOMED) — os dois contam na taxa de reabandono.
+-- O pedido também é a conversa do chat (ver chat_messages).
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS adoption_requests (
     id                     BIGSERIAL    PRIMARY KEY,
@@ -337,10 +369,10 @@ CREATE INDEX IF NOT EXISTS idx_adoption_requests_adopter ON adoption_requests (a
 CREATE INDEX IF NOT EXISTS idx_adoption_requests_outcome ON adoption_requests (status)
     WHERE status IN ('CONCLUDED', 'RETURNED', 'REHOMED');
 
-COMMENT ON TABLE  adoption_requests                       IS 'Pedidos de adoção: quem quer adotar (adopter_id) pede um animal ao dono dele';
+COMMENT ON TABLE  adoption_requests                       IS 'Pedidos de adoção: quem quer adotar (adopter_id) pede um animal ao dono dele. O id do pedido é também o id da conversa do chat';
 COMMENT ON COLUMN adoption_requests.status                IS 'PENDING, ACCEPTED, AWAITING_DELIVERY, CONCLUDED, REJECTED, CANCELLED, RETURNED (voltou ao doador) ou REHOMED (republicado pelo adotante)';
 COMMENT ON COLUMN adoption_requests.cancel_reason         IS 'Só em CANCELLED: ADOPTER_WITHDREW, OWNER_WITHDREW, ANIMAL_ADOPTED (outro pedido concluiu), ANIMAL_UNAVAILABLE (o dono tirou o animal do ar), ACCOUNT_DELETED (uma das partes excluiu a conta), ACCOUNT_BANNED (uma das partes foi banida) ou LISTING_REMOVED (anúncio removido pela moderação)';
-COMMENT ON COLUMN adoption_requests.cancelled_from_status IS 'Status em que o pedido estava quando foi cancelado';
+COMMENT ON COLUMN adoption_requests.cancelled_from_status IS 'Status em que o pedido estava quando foi cancelado (define se o pedido chegou a ter conversa no chat)';
 COMMENT ON COLUMN adoption_requests.closed_at             IS 'Quando o pedido foi recusado ou cancelado';
 COMMENT ON COLUMN adoption_requests.match_score_at_adoption IS 'Score do AUmatch congelado na conclusão (nulo sem quiz completo) — base das faixas da taxa de reabandono';
 COMMENT ON COLUMN adoption_requests.return_date             IS 'RETURNED: data em que o animal voltou ao doador; REHOMED: data da republicação';
@@ -381,6 +413,60 @@ COMMENT ON TABLE  adoption_reviews             IS 'Avaliações de adoções con
 COMMENT ON COLUMN adoption_reviews.author_role IS 'ADOPTER: o adotante avalia o dono; OWNER: o dono avalia o adotante';
 COMMENT ON COLUMN adoption_reviews.rating      IS 'Estrelas, de 1 a 5';
 COMMENT ON COLUMN adoption_reviews.updated_at  IS 'Preenchida só quando o autor edita a avaliação';
+
+-- ------------------------------------------------------------
+-- chat_messages — a conversa de um pedido de adoção. Não existe
+-- tabela de conversa: o pedido (adoption_requests) é a conversa.
+-- A conversa existe a partir do aceite (ACCEPTED) e só aceita
+-- mensagens novas em ACCEPTED (regra aplicada na API).
+-- USER: mensagem de uma das partes (sender_id + text).
+-- SYSTEM: aviso criado pela API, na mesma transação da troca de
+-- status do pedido (system_event); o frontend monta o texto.
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id            BIGSERIAL     PRIMARY KEY,
+    request_id    BIGINT        NOT NULL REFERENCES adoption_requests (id) ON DELETE CASCADE,
+    sender_id     BIGINT        REFERENCES users (id) ON DELETE CASCADE,
+    type          VARCHAR(10)   NOT NULL DEFAULT 'USER',
+    text          VARCHAR(1000),
+    system_event  VARCHAR(30),
+    created_at    TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT chk_chat_messages_type         CHECK (type IN ('USER', 'SYSTEM')),
+    CONSTRAINT chk_chat_messages_system_event CHECK (system_event IN ('DELIVERY_REQUESTED', 'DELIVERY_DECLINED',
+                                                                      'ADOPTION_CONCLUDED',
+                                                                      'ADOPTER_WITHDREW', 'OWNER_WITHDREW',
+                                                                      'ANIMAL_RETURNED', 'ANIMAL_REHOMED')),
+    CONSTRAINT chk_chat_messages_text         CHECK (text IS NULL OR char_length(btrim(text)) > 0),
+    CONSTRAINT chk_chat_messages_shape        CHECK ((type = 'USER'   AND sender_id IS NOT NULL AND text IS NOT NULL     AND system_event IS NULL)
+                                                  OR (type = 'SYSTEM' AND sender_id IS NULL     AND text IS NULL         AND system_event IS NOT NULL))
+);
+
+-- Histórico e polling ("mensagens depois do id X") de uma conversa
+CREATE INDEX IF NOT EXISTS idx_chat_messages_request ON chat_messages (request_id, id);
+
+COMMENT ON TABLE  chat_messages              IS 'Mensagens do chat de cada pedido de adoção (o pedido é a conversa)';
+COMMENT ON COLUMN chat_messages.sender_id    IS 'Quem escreveu (adotante ou dono) — nulo nas mensagens de sistema';
+COMMENT ON COLUMN chat_messages.type         IS 'USER (escrita por uma das partes) ou SYSTEM (aviso criado pela API na troca de status)';
+COMMENT ON COLUMN chat_messages.text         IS 'Texto da mensagem USER, de 1 a 1000 caracteres — nulo em SYSTEM';
+COMMENT ON COLUMN chat_messages.system_event IS 'Só em SYSTEM: DELIVERY_REQUESTED, DELIVERY_DECLINED, ADOPTION_CONCLUDED, ADOPTER_WITHDREW, OWNER_WITHDREW, ANIMAL_RETURNED ou ANIMAL_REHOMED';
+
+-- ------------------------------------------------------------
+-- chat_reads — até qual mensagem cada parte já leu, por conversa.
+-- Não lidas = mensagens com id maior, que não são da própria conta
+-- (mensagens de sistema contam para as duas partes).
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS chat_reads (
+    request_id            BIGINT     NOT NULL REFERENCES adoption_requests (id) ON DELETE CASCADE,
+    user_id               BIGINT     NOT NULL REFERENCES users (id)             ON DELETE CASCADE,
+    last_read_message_id  BIGINT     NOT NULL CHECK (last_read_message_id >= 0),
+    read_at               TIMESTAMP  NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (request_id, user_id)
+);
+
+COMMENT ON TABLE  chat_reads                      IS 'Marca de leitura de cada parte em cada conversa — alimenta o contador de não lidas';
+COMMENT ON COLUMN chat_reads.last_read_message_id IS 'Última mensagem vista; só aumenta (GREATEST no upsert). Não é FK de propósito: é só um marcador';
 
 -- ------------------------------------------------------------
 -- events — eventos criados por ONGs. Excluir um evento com
@@ -436,9 +522,45 @@ CREATE TABLE IF NOT EXISTS event_attendances (
 CREATE INDEX IF NOT EXISTS idx_event_attendances_user ON event_attendances (user_id);
 
 -- ------------------------------------------------------------
+-- mercado_pago_accounts — conta Mercado Pago de cada ONG (OAuth
+-- do próprio Mercado Pago). As doações caem direto nela: a
+-- plataforma não guarda doações nem cobra comissão. Os tokens
+-- ficam criptografados pela aplicação (AES-256-GCM): o banco só
+-- vê texto cifrado. Sem conta CONNECTED, a ONG não cria campanha
+-- e as campanhas dela passam a acceptingDonations = false
+-- (calculado na leitura, não é coluna).
+-- Excluir a conta da ONG apaga a linha (ON DELETE CASCADE).
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS mercado_pago_accounts (
+    ngo_id         BIGINT       PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
+    mp_user_id     BIGINT       NOT NULL UNIQUE,
+    access_token   TEXT         NOT NULL,
+    refresh_token  TEXT         NOT NULL,
+    expires_at     TIMESTAMP    NOT NULL,
+    live_mode      BOOLEAN      NOT NULL DEFAULT FALSE,
+    status         VARCHAR(20)  NOT NULL DEFAULT 'CONNECTED',
+    connected_at   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT chk_mp_accounts_status CHECK (status IN ('CONNECTED', 'NEEDS_RECONNECT'))
+);
+
+-- O job diário procura as contas que vencem logo
+CREATE INDEX IF NOT EXISTS idx_mp_accounts_expires ON mercado_pago_accounts (expires_at);
+
+COMMENT ON TABLE  mercado_pago_accounts               IS 'Conta Mercado Pago vinculada por cada ONG (OAuth) — as doações caem direto nela';
+COMMENT ON COLUMN mercado_pago_accounts.mp_user_id    IS 'user_id da conta no Mercado Pago; uma conta não serve a duas ONGs';
+COMMENT ON COLUMN mercado_pago_accounts.access_token  IS 'Token de acesso da ONG, criptografado pela aplicação (AES-256-GCM)';
+COMMENT ON COLUMN mercado_pago_accounts.refresh_token IS 'Token de renovação, criptografado; muda a cada renovação';
+COMMENT ON COLUMN mercado_pago_accounts.live_mode     IS 'false = credenciais de teste (sandbox)';
+COMMENT ON COLUMN mercado_pago_accounts.status        IS 'CONNECTED ou NEEDS_RECONNECT (renovação falhou ou acesso revogado)';
+
+-- ------------------------------------------------------------
 -- campaigns — campanhas de arrecadação das ONGs. "Encerrada por
 -- prazo" não é gravada: é calculada na leitura (status ACTIVE com
 -- deadline < hoje). Excluir com doação aprovada é lógico (deleted).
+-- "acceptingDonations" também é calculado na leitura: campanha
+-- ACTIVE e ONG com conta Mercado Pago CONNECTED.
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS campaigns (
     id                     BIGSERIAL      PRIMARY KEY,
@@ -467,7 +589,7 @@ CREATE TABLE IF NOT EXISTS campaigns (
 
 CREATE INDEX IF NOT EXISTS idx_campaigns_ngo ON campaigns (ngo_id);
 
-COMMENT ON TABLE  campaigns                       IS 'Campanhas de arrecadação criadas por ONGs; doações via PIX do Mercado Pago';
+COMMENT ON TABLE  campaigns                       IS 'Campanhas de arrecadação criadas por ONGs; doações via PIX do Mercado Pago, direto na conta da ONG';
 COMMENT ON COLUMN campaigns.custom_category       IS 'Nome livre da categoria quando category = OTHER; nulo nas demais';
 COMMENT ON COLUMN campaigns.status                IS 'ACTIVE ou CLOSED (encerrada pela ONG). Prazo vencido também conta como encerrada, mas é calculado na leitura';
 COMMENT ON COLUMN campaigns.deleted               IS 'Exclusão lógica: some das rotas de campanha, mas as doações aprovadas continuam no histórico';
@@ -480,6 +602,7 @@ COMMENT ON COLUMN campaigns.moderated_by          IS 'O admin que fez a última 
 -- raisedAmount / donationsCount da campanha = SUM / COUNT das
 -- APPROVED. A aprovação é um UPDATE atômico (PENDING|CANCELLED →
 -- APPROVED), para webhook e polling nunca somarem duas vezes.
+-- A order sai sem marketplace_fee: a plataforma não cobra comissão.
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS donations (
     id              BIGSERIAL      PRIMARY KEY,
@@ -506,7 +629,7 @@ CREATE INDEX IF NOT EXISTS idx_donations_ngo_status      ON donations (ngo_id, s
 
 COMMENT ON TABLE  donations                IS 'Doações PIX às campanhas. PENDING vale 30 min; depois vira EXPIRED (calculado na leitura)';
 COMMENT ON COLUMN donations.campaign_title IS 'Título no momento da doação: o histórico continua legível se a campanha for apagada de vez';
-COMMENT ON COLUMN donations.ngo_id         IS 'ONG dona no momento da doação: diz qual token do Mercado Pago consulta a order';
+COMMENT ON COLUMN donations.ngo_id         IS 'ONG dona no momento da doação: diz qual token do Mercado Pago (mercado_pago_accounts) consulta a order';
 
 -- ------------------------------------------------------------
 -- reports — denúncias feitas no site. O alvo é polimórfico
