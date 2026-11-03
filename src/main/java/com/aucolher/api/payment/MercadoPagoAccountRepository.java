@@ -6,6 +6,7 @@ import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -21,4 +22,12 @@ public interface MercadoPagoAccountRepository extends JpaRepository<MercadoPagoA
     Optional<MercadoPagoAccount> findForUpdate(@Param("ngoId") Long ngoId);
 
     List<MercadoPagoAccount> findByStatusAndExpiresAtBefore(MercadoPagoAccountStatus status, LocalDateTime limit);
+
+    /**
+     * A exclusão de conta anonimiza a linha de users, então o ON DELETE CASCADE não dispara.
+     * Sem carregar a entidade: não depende da chave que descriptografa os tokens.
+     */
+    @Modifying
+    @Query("delete from MercadoPagoAccount a where a.ngoId = :ngoId")
+    int deleteByNgoId(@Param("ngoId") Long ngoId);
 }
