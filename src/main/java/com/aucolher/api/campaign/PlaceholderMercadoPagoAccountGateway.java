@@ -5,9 +5,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
- * PROVISÓRIO, até a migração 009 existir: todas as ONGs usam um único token de teste
- * (app.mercadopago.dev-access-token). Apague esta classe quando a 009 chegar e faça o
- * service dela implementar MercadoPagoAccountGateway.
+ * PROVISÓRIO, até as doações usarem a conta de cada ONG: todas as ONGs usam um único
+ * token de teste (app.mercadopago.dev-access-token). Para migrar, apague esta classe e
+ * faça o MercadoPagoOAuthService (payment/) implementar MercadoPagoAccountGateway.
  */
 @Component
 public class PlaceholderMercadoPagoAccountGateway implements MercadoPagoAccountGateway {
