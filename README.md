@@ -17,6 +17,13 @@ src/main/java/com/aucolher/api/
 │   ├── AuthController.java
 │   ├── AuthService.java                    # Regra de negócio e hashing BCrypt
 │   └── dto/                                # LoginDTO, NgoRegistrationDTO, PersonRegistrationDTO, AuthResponseDTO
+├── password/                               # Recuperar e alterar a senha pelo link do e-mail
+│   ├── PasswordResetController.java
+│   ├── PasswordResetService.java           # Regras: uso único, 30 minutos, um e-mail por minuto, derruba as sessões
+│   ├── MailService.java                    # Envia os e-mails; sem MAIL_USERNAME, só escreve no log
+│   ├── PasswordResetToken.java / PasswordResetTokenRepository.java
+│   ├── PasswordUserStore.java              # Grava a senha nova e o momento da troca em users
+│   └── dto/                                # ForgotPasswordDTO, ResetTokenDTO, ResetPasswordDTO
 ├── user/                                   # Conta do usuário e perfil ("Minha conta")
 │   ├── UserController.java
 │   ├── UserService.java
@@ -56,6 +63,15 @@ src/main/java/com/aucolher/api/
 │   ├── MercadoPagoWebhookController.java / MercadoPagoWebhookValidator.java  # Webhook com a assinatura x-signature
 │   ├── entity/                             # Donation + DonationStatus
 │   └── dto/                                # DonationResponseDTO, DonationPixDTO, DonationCampaignDTO...
+├── payment/                                # Conta Mercado Pago de cada ONG (OAuth)
+│   ├── MercadoPagoController.java          # Conectar, consultar, desconectar e a volta do OAuth
+│   ├── MercadoPagoOAuthService.java        # Vínculo, renovação do token e desconexão
+│   ├── MercadoPagoClient.java              # Chamadas ao Mercado Pago (tokens e orders)
+│   ├── MercadoPagoTokenRefreshJob.java     # Renova todo dia as contas que vencem logo
+│   ├── OAuthStateService.java              # O state assinado do OAuth
+│   ├── TokenCryptoConverter.java           # Tokens criptografados no banco (AES-256-GCM)
+│   ├── MercadoPagoWebhookController.java / MercadoPagoWebhookService.java  # Sem @RestController: a rota está em donation/ enquanto o PIX usa o token provisório
+│   └── dto/                                # MercadoPagoAccountDTO, ConnectResponseDTO
 ├── match/                                  # AUmatch: quiz da pessoa e deck por compatibilidade
 │   ├── MatchController.java
 │   ├── MatchService.java                   # Perfil do quiz e deck (filtra, pontua e ordena)
@@ -73,6 +89,13 @@ src/main/java/com/aucolher/api/
 │   ├── AdoptionReviewRepository.java
 │   ├── entity/                             # AdoptionRequest, AdoptionReview + enums (AdoptionStatus, CancelReason, ReviewRole)
 │   └── dto/                                # AdoptionRequestDTO, AdopterDTO, ReviewDTO, UserReviewsDTO...
+├── chat/                                   # Chat de cada pedido de adoção (o pedido é a conversa)
+│   ├── ChatController.java
+│   ├── ChatService.java                    # Regras: só as partes leem, só se escreve em ACCEPTED, avisos de sistema
+│   ├── ChatMessageRepository.java / ChatReadRepository.java
+│   ├── ChatRequestLookup.java              # Lê do pedido quem são as partes e o status
+│   ├── ChatMessage.java / ChatRead.java    # + enums (MessageType, SystemEvent)
+│   └── dto/                                # ChatMessageDTO, ChatSummaryDTO, ConversationSummaryDTO, SendMessageDTO, MarkReadDTO
 ├── report/                                 # Denúncias de anúncios e perfis
 │   ├── ReportController.java               # POST /api/reports e /api/reports/mine
 │   ├── ReportService.java                  # Regras do envio, cópia do alvo e resolução dos casos
@@ -85,6 +108,10 @@ src/main/java/com/aucolher/api/
 │   ├── AdminStatsService.java              # Visão geral, com a taxa de reabandono
 │   ├── ModerationService.java              # Banir, reativar, remover anúncio/evento, arquivar denúncia
 │   └── dto/                                # AdminStatsDTO, AdminUserDTO, AdminAnimalDTO, ListingStatus...
+├── common/                                 # Usado por payment/, password/ e chat/
+│   ├── ApiException.java / ApiExceptionHandler.java  # Erro no formato { status, error, message }
+│   ├── UserDirectory.java / DonationGateway.java     # Consultas mínimas a users e donations
+│   └── security/CurrentUserProvider.java   # O id da conta logada
 ├── shared/                                 # Comum a todas as funcionalidades
 │   ├── dto/PageDTO.java                    # Formato padrão das respostas paginadas
 │   ├── exception/                          # Exceções (400, 401, 403, 404), @RestControllerAdvice e ErrorResponseDTO
@@ -94,6 +121,7 @@ src/main/java/com/aucolher/api/
     ├── JwtService.java                     # Geração/validação de token JWT
     ├── JwtAuthenticationFilter.java        # Filtro que autentica requisições via Bearer token
     ├── CustomUserDetailsService.java
+    ├── AuthenticatedUser.java              # A conta relida a cada requisição, com a última troca de senha
     ├── CustomOAuth2UserService.java        # Cria o usuário automaticamente no 1º login Google
     ├── OAuth2AuthenticationSuccessHandler.java  # Volta ao frontend com um código de troca após login Google
     ├── OAuth2AuthenticationFailureHandler.java  # Volta ao frontend com ?error=failed
@@ -234,6 +262,18 @@ psql -U postgres -h localhost -d aucolher_db -f sql/migrations/013_account_delet
 
 Nenhum dado muda. Pode ser repetida.
 
+#### Conta Mercado Pago, senha e chat (migrações 009, 010 e 011)
+
+A 009 cria `mercado_pago_accounts`, a conta Mercado Pago de cada ONG. A 010 cria `password_reset_tokens` e acrescenta `users.password_changed_at`, a última troca de senha. A 011 cria `chat_messages` e `chat_reads`. Sem elas a API não sobe (`Schema-validation: missing table`):
+
+```bash
+psql -U postgres -h localhost -d aucolher_db -f sql/migrations/009_mercado_pago_accounts.sql
+psql -U postgres -h localhost -d aucolher_db -f sql/migrations/010_password_security.sql
+psql -U postgres -h localhost -d aucolher_db -f sql/migrations/011_chat.sql
+```
+
+Nenhum dado muda. Podem ser repetidas.
+
 Depois de trazer as mudanças do Git, faça **Build → Rebuild Project** no IntelliJ (ou `mvn clean`): classes antigas compiladas (`Usuario`, `Animal` com campos em português) ficam na pasta `target/` e impedem a API de subir.
 
 ### 2. Variáveis de ambiente
@@ -247,17 +287,32 @@ Depois de trazer as mudanças do Git, faça **Build → Rebuild Project** no Int
 | `JWT_SECRET`          | Chave HMAC dos tokens JWT (mínimo 32 caracteres) | — (sem padrão versionado) |
 | `JWT_EXPIRATION_MS`   | Validade do token em milissegundos           | `86400000` (24h)        |
 | `CORS_ALLOWED_ORIGINS`| Origens liberadas no CORS (separadas por vírgula) | `http://localhost:5173` |
-| `FRONTEND_URL`        | Para onde a API volta depois do login Google | `http://localhost:5173` |
-| `MP_DEV_ACCESS_TOKEN` | Token de teste do Mercado Pago, usado por todas as ONGs (provisório, até a migração 009) | — |
+| `FRONTEND_URL`        | Para onde a API volta depois do login Google e do OAuth do Mercado Pago; base do link de senha | `http://localhost:5173` |
+| `MAIL_USERNAME`       | Conta do Gmail que envia os e-mails de senha | — (sem ela, o e-mail só vai para o log) |
+| `MAIL_PASSWORD`       | Senha de app dessa conta                     | — |
+| `MP_DEV_ACCESS_TOKEN` | Token de teste do Mercado Pago, usado por todas as ONGs (provisório, até as doações usarem a conta de cada ONG) | — |
 | `MP_SANDBOX`          | `true`: o pagador do PIX vai como `APRO` (o sandbox aprova sozinho) | `true` |
 | `MP_WEBHOOK_SECRET`   | Assinatura secreta dos webhooks do Mercado Pago | — (sem ela, todo webhook vira 401) |
 | `MP_BASE_URL`         | Endereço da API do Mercado Pago              | `https://api.mercadopago.com` |
+| `MP_CLIENT_ID`        | Aplicação do AUcolher no Mercado Pago (conexão das ONGs) | — (sem as credenciais desta parte, conectar responde 503) |
+| `MP_CLIENT_SECRET`    | Segredo dessa aplicação                      | — |
+| `MP_REDIRECT_URI`     | Idêntica à cadastrada na aplicação; termina em `/api/mercado-pago/oauth/callback` | — |
+| `MP_TOKEN_ENCRYPTION_KEY` | Criptografa os tokens no banco: `openssl rand -base64 32` | — |
+| `MP_STATE_SECRET`     | Assina o `state` do OAuth                    | o valor de `JWT_SECRET` |
+| `MP_TEST_TOKEN`       | `true` com as credenciais de teste           | `false` |
 
 Sem `JWT_SECRET`, a API sobe gerando uma chave aleatória por execução (registra um WARN no log): dá para desenvolver, mas todo restart invalida os tokens já emitidos. Defina a variável em qualquer ambiente que não seja a sua máquina.
 
 **Conta admin.** Não existe cadastro público de admin, e a API não cria a conta ao subir. A conta `ADMIN` é inserida direto no banco (usuário com `user_type = 'ADMIN'`).
 
-**Mercado Pago (provisório).** O contrato manda cada ONG conectar a própria conta do Mercado Pago pelo OAuth (migração 009, `api-mercado-pago-ongs.md`), mas isso ainda não existe. Até lá, a `PlaceholderMercadoPagoAccountGateway` trata toda ONG como conectada e usa um único `MP_DEV_ACCESS_TOKEN`. Sem ele, as campanhas funcionam normalmente, mas doar responde 400 "Esta ONG não está recebendo doações no momento.".
+**Mercado Pago (provisório).** O contrato manda cada ONG conectar a própria conta do Mercado Pago pelo OAuth (migração 009, `api-mercado-pago-ongs.md`). As rotas da conexão existem (`payment/`), mas ainda não foram testadas com credenciais reais e as doações ainda não usam essa conta: a `PlaceholderMercadoPagoAccountGateway` trata toda ONG como conectada e usa um único `MP_DEV_ACCESS_TOKEN`. Sem ele, as campanhas funcionam normalmente, mas doar responde 400 "Esta ONG não está recebendo doações no momento.".
+
+Falta, para as doações usarem a conta de cada ONG:
+- fazer o `MercadoPagoOAuthService` implementar `MercadoPagoAccountGateway` e apagar o Placeholder;
+- trocar o webhook de `donation/` pelo de `payment/`, hoje sem `@RestController` (os dois juntos impedem a API de subir);
+- conferir no sandbox os campos da Orders API em `MercadoPagoClient` (§6 do contrato).
+
+**E-mail.** Sem `MAIL_USERNAME`, a recuperação de senha funciona, mas o e-mail, com o link, só vai para o log da API. Para enviar de verdade, use uma conta do Gmail com uma senha de app.
 
 Para o login Google funcionar, crie as credenciais em [Google Cloud Console](https://console.cloud.google.com/apis/credentials) com **Authorized redirect URI**: `http://localhost:8080/login/oauth2/code/google`.
 
@@ -478,6 +533,18 @@ POST /api/auth/google/exchange
 
 Fluxo completo e como criar as credenciais: `docs/entrega-final/api-login-google.md` no frontend.
 
+### Recuperar e alterar a senha
+
+Contrato completo em `docs/entrega-final/api-senha.md`, no frontend. As três rotas são públicas e respondem 204.
+
+| Método e rota | O que faz |
+|---|---|
+| `POST /api/auth/password/forgot` | `{ "email": "..." }`: envia o link. Responde igual exista a conta ou não; 400 só com e-mail mal formado |
+| `POST /api/auth/password/reset/check` | `{ "token": "..." }`: confere o link ao abrir a página. 400 se inválido, vencido ou já usado |
+| `POST /api/auth/password/reset` | `{ "token": "...", "newPassword": "..." }`: troca a senha, com no mínimo 6 caracteres |
+
+O link vale 30 minutos e só pode ser usado uma vez. Pedir outro invalida o anterior, com limite de um e-mail por minuto por conta. O banco guarda só o hash (SHA-256) do token. Redefinir grava `users.password_changed_at`, e os tokens JWT emitidos antes disso passam a responder 401. "Alterar senha", em Minha conta, usa o mesmo link. Conta do Google sem senha cria uma assim e entra pelos dois caminhos; o `provider` continua `GOOGLE`. O objeto `user` traz `hasPassword`, para o frontend escolher entre "Alterar senha" e "Criar senha".
+
 ### Animais
 
 Qualquer conta (ONG ou usuário comum) pode anunciar. A cidade/UF do animal são as do perfil de quem anuncia — preencha-as em `PUT /api/users/me` antes, senão o cadastro responde 400.
@@ -607,6 +674,17 @@ Contrato completo em `docs/entrega-final/api-campanhas-doacoes.md`, no frontend.
 
 Categorias: `HEALTH`, `FOOD`, `INFRASTRUCTURE`, `NEUTERING`, `RESCUE` e `OTHER` (com o nome em `customCategory`). Valores em reais inteiros: meta de R$ 50 a R$ 1.000.000, doação de R$ 5 a R$ 100.000. A campanha com prazo vencido conta como `CLOSED` (calculado na leitura, sem job), e o PIX vence em 30 minutos (`EXPIRED`, também calculado). `raisedAmount` e `donationsCount` somam só as `APPROVED`, e a aprovação é um `UPDATE` atômico, para o webhook e o polling nunca contarem duas vezes.
 
+### Conta Mercado Pago da ONG
+
+Contrato completo em `docs/entrega-final/api-mercado-pago-ongs.md`, no frontend. As doações ainda não usam esta conta (veja a seção de variáveis de ambiente).
+
+| Método e rota | Quem acessa | O que faz |
+|---|---|---|
+| `POST /api/ngo/mercado-pago/connect` | ONG | Devolve a `authorizationUrl`; também serve para reconectar. 503 sem as credenciais |
+| `GET /api/ngo/mercado-pago` | ONG | Situação da conta |
+| `DELETE /api/ngo/mercado-pago` | ONG | Desconecta — 204. 404 sem conta; 400 com PIX pendente |
+| `GET /api/mercado-pago/oauth/callback` | Público | Quem chega é o navegador da ONG. Sempre 302 para `{FRONTEND_URL}/ong/painel/campanhas?mp=`, com `connected`, `denied`, `already_linked` ou `error` |
+
 ### Pedidos de adoção
 
 Todas exigem login. Enviar um pedido é para **pessoa ou ONG** (o admin recebe 403). O dono do pedido é sempre o dono do animal.
@@ -717,6 +795,19 @@ Depois que o pedido é concluído, cada parte pode avaliar a outra uma vez: o ad
 ```
 
 `adoptionsCount` conta as adoções que aconteceram (`CONCLUDED`, `RETURNED` ou `REHOMED`) em que a conta participou, como dona do animal ou como adotante.
+
+### Chat
+
+Contrato completo em `docs/entrega-final/api-chat.md`, no frontend. O id da conversa é o id do pedido. Só as duas partes do pedido acessam: quem não participa recebe 403, e o admin também.
+
+| Método e rota | O que faz |
+|---|---|
+| `GET /api/chats/summary` | As conversas da conta, com as não lidas e a última mensagem |
+| `GET /api/chats/{requestId}/messages?after=` | O histórico; com `after`, só as mensagens com id maior (polling) |
+| `POST /api/chats/{requestId}/messages` | `{ "text": "..." }`, até 1000 caracteres — 201. Só em `ACCEPTED` |
+| `PUT /api/chats/{requestId}/read` | `{ "lastMessageId": 12 }` — 204. A marca de leitura nunca volta |
+
+A conversa existe a partir do aceite e continua visível depois de concluída, devolvida, republicada ou cancelada. Pedido que nunca foi aceito responde 404. Cada troca de status grava um aviso `SYSTEM` na mesma transação, e o frontend monta a frase: `DELIVERY_REQUESTED`, `DELIVERY_DECLINED`, `ADOPTION_CONCLUDED`, `ADOPTER_WITHDREW`, `OWNER_WITHDREW`, `ANIMAL_RETURNED` e `ANIMAL_REHOMED`. Cancelamentos em lote (animal adotado ou tirado do ar, moderação) não geram aviso.
 
 ### Denúncias
 
@@ -867,7 +958,7 @@ A resposta traz também `complete`: `true` quando as 7 perguntas têm resposta.
 
 - **Código em inglês, textos em português**: classes, campos, JSON, rotas, valores de enum, tabelas e colunas usam inglês, o padrão de mercado. Mensagens de erro (lidas pelo usuário final), comentários e documentação ficam em português. Termos brasileiros sem tradução exata (`cnpj`, `cep`) mantêm o nome.
 - **JWT stateless**: como o requisito pede desativação de CSRF e uma API REST pura, optei por sessão stateless com JWT em vez de sessão HTTP tradicional — é o padrão de mercado para esse tipo de API e evita problemas de CORS/cookies com clientes SPA/mobile.
-- **Senha nula para contas OAuth2**: usuários criados via Google não têm senha própria; o login tradicional (`/login`) rejeita essas contas com uma mensagem explicativa.
+- **Senha nula para contas OAuth2**: usuários criados via Google não têm senha própria; o login tradicional (`/login`) rejeita essas contas com uma mensagem explicativa, até a pessoa criar uma senha pelo link do e-mail.
 - **Normalização nos DTOs**: os construtores compactos dos records limpam os campos (trim, vazio vira null, CNPJ/CEP só com dígitos, rede social sem `@`, link com protocolo) antes da validação. A Service recebe dados já canônicos e cuida só da regra de negócio.
 - **CNPJ pelo Bean Validation**: `@CNPJ` do Hibernate Validator confere os dígitos verificadores; um `@Pattern` extra barra sequências repetidas (`00.000.000/0000-00`), que o `@CNPJ` sozinho aceita.
 - **Admin sem cadastro público**:
@@ -891,5 +982,5 @@ A resposta traz também `complete`: `true` quando as 7 perguntas têm resposta.
 - **Sem cópia congelada**: o pedido lê o adotante, o animal e as respostas do quiz ao vivo, então o dono vê sempre a compatibilidade atual.
 - **Vagas de evento sem corrida**: confirmar presença, editar e excluir leem o evento com `SELECT ... FOR UPDATE`, então dois cliques ao mesmo tempo não passam da capacidade.
 - **Evento com confirmados não some**: excluir um evento que já tem presenças só muda o status para `CANCELLED`, e quem confirmou continua vendo o evento em `/api/events/attending`.
-- **Exclusão de conta é anonimização**: a linha de `users` fica, porque pedidos, avaliações e doações das outras pessoas apontam para ela. Quando o chat (011), a recuperação de senha (010) e a conta Mercado Pago de cada ONG (009) chegarem, `AccountDeletionService` precisa apagar também as marcas de leitura, os links de senha e a conta vinculada.
-- **Ainda fora da API**: o chat (o frontend ainda simula as mensagens), a recuperação de senha e a conexão de cada ONG com o próprio Mercado Pago.
+- **Exclusão de conta é anonimização**: a linha de `users` fica, porque pedidos, avaliações e doações das outras pessoas apontam para ela. Como o `ON DELETE CASCADE` não dispara, `AccountDeletionService` apaga também os links de senha, as marcas de leitura do chat e a conta Mercado Pago. As mensagens do chat ficam, para a outra parte manter o histórico.
+- **Ainda fora da API**: as doações na conta de cada ONG. A conexão existe, mas o PIX segue no token provisório.

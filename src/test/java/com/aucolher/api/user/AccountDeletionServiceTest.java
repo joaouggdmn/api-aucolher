@@ -4,10 +4,13 @@ import com.aucolher.api.adoption.AdoptionRequestService;
 import com.aucolher.api.adoption.entity.CancelReason;
 import com.aucolher.api.animal.AnimalService;
 import com.aucolher.api.campaign.CampaignService;
+import com.aucolher.api.chat.ChatReadRepository;
 import com.aucolher.api.event.EventAttendanceRepository;
 import com.aucolher.api.event.EventService;
 import com.aucolher.api.favorite.FavoriteRepository;
 import com.aucolher.api.match.MatchProfileRepository;
+import com.aucolher.api.password.PasswordResetTokenRepository;
+import com.aucolher.api.payment.MercadoPagoAccountRepository;
 import com.aucolher.api.report.ReportService;
 import com.aucolher.api.report.entity.ReportResolution;
 import com.aucolher.api.shared.exception.BusinessException;
@@ -58,6 +61,12 @@ class AccountDeletionServiceTest {
     private FavoriteRepository favoriteRepository;
     @Mock
     private EventAttendanceRepository attendanceRepository;
+    @Mock
+    private PasswordResetTokenRepository passwordResetTokenRepository;
+    @Mock
+    private ChatReadRepository chatReadRepository;
+    @Mock
+    private MercadoPagoAccountRepository mercadoPagoAccountRepository;
     @Mock
     private ReportService reportService;
 
@@ -134,6 +143,9 @@ class AccountDeletionServiceTest {
         verify(matchProfileRepository).deleteById(5L);
         verify(favoriteRepository).removeAllOf(5L);
         verify(attendanceRepository).deleteAllOf(5L);
+        verify(passwordResetTokenRepository).deleteByUserId(5L);
+        verify(chatReadRepository).deleteByUserId(5L);
+        verify(mercadoPagoAccountRepository).deleteByNgoId(5L);
 
         assertThat(person.getName()).isEqualTo("Conta excluída");
         assertThat(person.getEmail()).isEqualTo("excluida-5@aucolher.invalid");
