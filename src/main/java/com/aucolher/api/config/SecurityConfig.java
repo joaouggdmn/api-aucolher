@@ -77,6 +77,11 @@ public class SecurityConfig {
                 // Quem chama o webhook é o Mercado Pago, sem token: a segurança é a
                 // assinatura x-signature, conferida no MercadoPagoWebhookValidator
                 .requestMatchers(HttpMethod.POST, "/api/webhooks/mercadopago").permitAll()
+                // Volta do OAuth do Mercado Pago: quem chega é o navegador da ONG, sem o nosso
+                // token. A segurança é o state assinado, conferido no OAuthStateService
+                .requestMatchers(HttpMethod.GET, "/api/mercado-pago/oauth/callback").permitAll()
+                // Conta Mercado Pago: só a ONG conecta, consulta e desconecta
+                .requestMatchers("/api/ngo/**").hasRole("NGO")
                 // Painel do admin: só a conta ADMIN (a autoridade ROLE_ADMIN vem do
                 // CustomUserDetailsService). Sem token → 401; logado sem ser admin → 403
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
@@ -85,6 +90,8 @@ public class SecurityConfig {
                 .requestMatchers("/api/match/**").hasRole("PERSON")
                 // Pedido de adoção: pessoa ou ONG pedem; o admin não adota
                 .requestMatchers(HttpMethod.POST, "/api/adoption-requests").hasAnyRole("PERSON", "NGO")
+                // Chat dos pedidos: só as partes conversam; o admin não acessa
+                .requestMatchers("/api/chats/**").hasAnyRole("PERSON", "NGO")
                 .anyRequest().authenticated()
             )
             // Sem isto, uma requisição sem token para rota protegida seria
