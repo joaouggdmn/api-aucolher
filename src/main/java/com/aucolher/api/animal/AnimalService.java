@@ -158,15 +158,19 @@ public class AnimalService {
     }
 
     /**
-     * Muda o status do anúncio: marcar como adotado, tirar do ar (INACTIVE) ou
-     * voltar a AVAILABLE. ADOPTED é definitivo. Saindo da vitrine, os pedidos
-     * de adoção ativos do animal são cancelados (AnimalLeftListingEvent).
+     * Muda o status do anúncio: tirar do ar (INACTIVE) ou voltar a AVAILABLE.
+     * ADOPTED só vem da conclusão do pedido de adoção, e é definitivo. Saindo da
+     * vitrine, os pedidos de adoção ativos do animal são cancelados
+     * (AnimalLeftListingEvent).
      */
     @Transactional
     public AnimalDetailDTO changeStatus(Long id, String ownerEmail, AnimalStatus newStatus) {
         Animal animal = findEditable(id, ownerEmail);
         if (newStatus == AnimalStatus.REMOVED) {
             throw new BusinessException("Só a moderação remove um anúncio");
+        }
+        if (newStatus == AnimalStatus.ADOPTED) {
+            throw new BusinessException("Um animal só fica como adotado quando a adoção é concluída");
         }
 
         if (animal.getStatus() == newStatus) {

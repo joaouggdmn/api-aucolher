@@ -197,6 +197,16 @@ class AnimalServiceTest {
     }
 
     @Test
+    void ownerCannotMarkAnimalAsAdopted() {
+        Animal listing = animal(AnimalStatus.AVAILABLE);
+        when(animalRepository.findById(10L)).thenReturn(Optional.of(listing));
+
+        assertThatThrownBy(() -> animalService.changeStatus(10L, OWNER_EMAIL, AnimalStatus.ADOPTED))
+                .isInstanceOf(BusinessException.class);
+        assertThat(listing.getStatus()).isEqualTo(AnimalStatus.AVAILABLE);
+    }
+
+    @Test
     void moderationRemovalCancelsTheRequestsWithItsOwnReason() {
         Animal listing = animal(AnimalStatus.AVAILABLE);
         when(animalRepository.findById(10L)).thenReturn(Optional.of(listing));

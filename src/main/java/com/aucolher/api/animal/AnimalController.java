@@ -81,7 +81,7 @@ public class AnimalController {
         return ResponseEntity.ok(animalService.update(id, loggedUser.getUsername(), dto));
     }
 
-    /** Marcar como adotado, tirar do ar ou reativar — só o dono. */
+    /** Tirar do ar ou reativar — só o dono. */
     @PatchMapping("/animals/{id}/status")
     public ResponseEntity<AnimalDetailDTO> changeStatus(@PathVariable Long id,
                                                           @AuthenticationPrincipal UserDetails loggedUser,
