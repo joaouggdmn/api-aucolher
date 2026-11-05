@@ -555,7 +555,7 @@ Qualquer conta (ONG ou usuário comum) pode anunciar. A cidade/UF do animal são
 | `GET /api/animals/{id}` | não | Detalhes completos. Anúncio `INACTIVE` só aparece para o dono (para os outros, 404) |
 | `POST /api/animals` | sim | Cadastra — responde 201 com o animal completo |
 | `PUT /api/animals/{id}` | dono | Edição completa (mesmo corpo do cadastro). Animal adotado não pode ser editado |
-| `PATCH /api/animals/{id}/status` | dono | `{ "status": "ADOPTED" }`, `"INACTIVE"` ou `"AVAILABLE"`. `ADOPTED` é definitivo |
+| `PATCH /api/animals/{id}/status` | dono | `{ "status": "INACTIVE" }` ou `"AVAILABLE"`. `ADOPTED` é recusado com 400: só vem da conclusão do pedido, e é definitivo |
 | `DELETE /api/animals/{id}` | dono | Tira do ar (exclusão lógica: vira `INACTIVE`) — responde 204 |
 | `GET /api/animals/mine` | sim | Todos os anúncios da conta logada, em qualquer status |
 | `GET /api/users/{id}/animals` | não | Os disponíveis de um perfil público |
