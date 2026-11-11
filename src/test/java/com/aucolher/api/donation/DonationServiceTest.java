@@ -200,6 +200,34 @@ class DonationServiceTest {
     }
 
     @Test
+    void pollingKeepsThePixWhenTheNgoAccountIsDown() {
+        givenLogged(person());
+        when(donations.findById(259L)).thenReturn(Optional.of(donation(DonationStatus.PENDING, LocalDateTime.now().plusMinutes(20))));
+        when(accounts.accessToken(1L)).thenThrow(new BusinessException("Esta ONG não está recebendo doações no momento."));
+
+        DonationResponseDTO dto = service.getById(259L, auth());
+
+        verifyNoInteractions(pix);
+        verify(donations, never()).approve(anyLong(), any());
+        assertThat(dto.status()).isEqualTo(DonationStatus.PENDING);
+        assertThat(dto.pix().qrCode()).isEqualTo("00020126pix");
+    }
+
+    @Test
+    void ngoAccountThatFailsWhenGeneratingThePixUsesTheContractMessage() {
+        givenLogged(person());
+        when(campaignService.findPublic(4L)).thenReturn(campaign());
+        when(accounts.isConnected(1L)).thenReturn(true);
+        givenSavedWithId(259L);
+        when(accounts.accessToken(1L)).thenThrow(new BusinessException("Esta ONG não está recebendo doações no momento."));
+
+        assertThatThrownBy(() -> service.create(4L, new DonationRequestDTO(new BigDecimal("50")), auth()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Esta ONG não está recebendo doações no momento.");
+        verifyNoInteractions(pix);
+    }
+
+    @Test
     void pixExpiresAfterThirtyMinutes() {
         givenLogged(person());
         when(donations.findById(259L)).thenReturn(Optional.of(donation(DonationStatus.PENDING, LocalDateTime.now().minusMinutes(1))));
@@ -281,6 +309,18 @@ class DonationServiceTest {
         service.onWebhook("OUTRA");
 
         verifyNoInteractions(pix);
+    }
+
+    @Test
+    void webhookWithoutTheNgoTokenIsAcceptedAndIgnored() {
+        when(donations.findByMpOrderId("ORD123"))
+                .thenReturn(Optional.of(donation(DonationStatus.PENDING, LocalDateTime.now().plusMinutes(20))));
+        when(accounts.accessToken(1L)).thenThrow(new BusinessException("Esta ONG não está recebendo doações no momento."));
+
+        service.onWebhook("ORD123");
+
+        verifyNoInteractions(pix);
+        verify(donations, never()).approve(anyLong(), any());
     }
 
     // ===================== Apoio =====================

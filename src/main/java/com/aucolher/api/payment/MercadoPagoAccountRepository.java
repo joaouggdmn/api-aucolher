@@ -21,6 +21,11 @@ public interface MercadoPagoAccountRepository extends JpaRepository<MercadoPagoA
     @Query("select a from MercadoPagoAccount a where a.ngoId = :ngoId")
     Optional<MercadoPagoAccount> findForUpdate(@Param("ngoId") Long ngoId);
 
+    /** Só o id e o status: não descriptografa os tokens (funciona mesmo sem MP_TOKEN_ENCRYPTION_KEY). */
+    @Query("select case when count(a) > 0 then true else false end from MercadoPagoAccount a "
+            + "where a.ngoId = :ngoId and a.status = :status")
+    boolean existsByNgoIdAndStatus(@Param("ngoId") Long ngoId, @Param("status") MercadoPagoAccountStatus status);
+
     List<MercadoPagoAccount> findByStatusAndExpiresAtBefore(MercadoPagoAccountStatus status, LocalDateTime limit);
 
     /**

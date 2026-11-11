@@ -59,7 +59,7 @@ public class DonationService {
         }
         BigDecimal amount = validateAmount(req);
         if (!accounts.isConnected(campaign.getNgoId())) {
-            throw new BusinessException("Esta ONG não está recebendo doações no momento.");
+            throw new BusinessException(MercadoPagoAccountGateway.NOT_RECEIVING_DONATIONS);
         }
 
         Donation d = new Donation();
@@ -121,7 +121,9 @@ public class DonationService {
         if (effectiveStatus(d) == DonationStatus.PENDING && d.getMpOrderId() != null) {
             try {
                 approveIfPaid(d);
-            } catch (MercadoPagoException e) {
+            } catch (MercadoPagoException | BusinessException e) {
+                // BusinessException = conta da ONG caiu. O PIX já gerado continua valendo (contrato):
+                // responde a doação como está e o webhook ainda pode confirmar.
                 log.warn("Não consegui consultar a order da doação {}: {}", id, e.getMessage());
             }
             d = donations.findById(id).orElseThrow();
@@ -154,7 +156,14 @@ public class DonationService {
     /** Webhook: acha a doação pela order e confirma no Mercado Pago (não confia no corpo recebido). */
     @Transactional
     public void onWebhook(String orderId) {
-        donations.findByMpOrderId(orderId).ifPresent(this::approveIfPaid);
+        donations.findByMpOrderId(orderId).ifPresent(d -> {
+            try {
+                approveIfPaid(d);
+            } catch (BusinessException e) {
+                // conta da ONG sem token utilizável: responde 200, repetir não resolveria
+                log.warn("Webhook: sem token para a ONG {} (doação {})", d.getNgoId(), d.getId());
+            }
+        });
     }
 
     /** Consulta a order com o token da ONG (donations.ngo_id) e aprova de forma atômica. */

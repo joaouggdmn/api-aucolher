@@ -3,6 +3,7 @@ package com.aucolher.api.payment;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -15,14 +16,16 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.Optional;
 
-import com.aucolher.api.payment.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 
 import com.aucolher.api.common.ApiException;
 import com.aucolher.api.common.DonationGateway;
 import com.aucolher.api.common.UserDirectory;
+import com.aucolher.api.shared.exception.BusinessException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 class MercadoPagoOAuthServiceTest {
@@ -33,6 +36,7 @@ class MercadoPagoOAuthServiceTest {
     private OAuthStateService stateService;
     private UserDirectory users;
     private DonationGateway donations;
+    private PlatformTransactionManager txManager;
     private MercadoPagoOAuthService service;
 
     @BeforeEach
@@ -43,8 +47,19 @@ class MercadoPagoOAuthServiceTest {
         stateService = new OAuthStateService(props, new ObjectMapper());
         users = mock(UserDirectory.class);
         donations = mock(DonationGateway.class);
-        service = new MercadoPagoOAuthService(props, repository, client, stateService, users, donations,
-                mock(PlatformTransactionManager.class));
+        txManager = mock(PlatformTransactionManager.class);
+        service = new MercadoPagoOAuthService(props, repository, client, stateService, users, donations, txManager);
+    }
+
+    private static MercadoPagoAccount account(MercadoPagoAccountStatus status, LocalDateTime expiresAt) {
+        MercadoPagoAccount account = new MercadoPagoAccount();
+        account.setNgoId(7L);
+        account.setMpUserId(999L);
+        account.setAccessToken("acc");
+        account.setRefreshToken("ref");
+        account.setExpiresAt(expiresAt);
+        account.setStatus(status);
+        return account;
     }
 
     private static MercadoPagoClient.TokenResponse tokens() {
@@ -124,5 +139,68 @@ class MercadoPagoOAuthServiceTest {
                 mock(PlatformTransactionManager.class));
         ApiException e = assertThrows(ApiException.class, () -> s.startConnection(7L));
         assertEquals(503, e.getStatus().value());
+    }
+
+    // ------------------------------------------------------------------ gateway das doações
+
+    @Test
+    void refreshRunsInItsOwnTransactionSoADonationRollbackKeepsTheNewToken() {
+        when(repository.findForUpdate(7L)).thenReturn(Optional.empty());
+
+        service.refreshIfDue(7L, Duration.ofDays(7));
+
+        ArgumentCaptor<TransactionDefinition> definition = ArgumentCaptor.forClass(TransactionDefinition.class);
+        verify(txManager).getTransaction(definition.capture());
+        assertEquals(TransactionDefinition.PROPAGATION_REQUIRES_NEW, definition.getValue().getPropagationBehavior());
+    }
+
+    @Test
+    void isConnectedDoesNotLoadTheTokens() {
+        when(repository.existsByNgoIdAndStatus(7L, MercadoPagoAccountStatus.CONNECTED)).thenReturn(true);
+
+        assertTrue(service.isConnected(7L));
+        assertFalse(service.isConnected(null));
+        verify(repository, never()).findById(any());
+        verify(repository, never()).findForUpdate(any());
+    }
+
+    @Test
+    void accessTokenOfAConnectedAccount() {
+        MercadoPagoAccount account = account(MercadoPagoAccountStatus.CONNECTED, LocalDateTime.now().plusDays(30));
+        when(repository.findForUpdate(7L)).thenReturn(Optional.of(account));
+        when(repository.findById(7L)).thenReturn(Optional.of(account));
+
+        assertEquals("acc", service.accessToken(7L));
+        verify(client, never()).refresh(anyString());
+    }
+
+    @Test
+    void accessTokenRenewsWhenTheAccountIsAboutToExpire() {
+        MercadoPagoAccount account = account(MercadoPagoAccountStatus.CONNECTED, LocalDateTime.now().plusDays(2));
+        when(repository.findForUpdate(7L)).thenReturn(Optional.of(account));
+        when(repository.findById(7L)).thenReturn(Optional.of(account));
+        when(client.refresh("ref")).thenReturn(new MercadoPagoClient.TokenResponse("acc2", "ref2", 15_552_000L, 999L, false));
+
+        assertEquals("acc2", service.accessToken(7L));
+        assertEquals("ref2", account.getRefreshToken());
+    }
+
+    @Test
+    void accessTokenOfAnAccountThatNeedsReconnectUsesTheContractMessage() {
+        MercadoPagoAccount account = account(MercadoPagoAccountStatus.NEEDS_RECONNECT, LocalDateTime.now().plusDays(30));
+        when(repository.findForUpdate(7L)).thenReturn(Optional.of(account));
+        when(repository.findById(7L)).thenReturn(Optional.of(account));
+
+        BusinessException e = assertThrows(BusinessException.class, () -> service.accessToken(7L));
+        assertEquals("Esta ONG não está recebendo doações no momento.", e.getMessage());
+    }
+
+    @Test
+    void accessTokenWithoutAccountUsesTheContractMessage() {
+        when(repository.findForUpdate(7L)).thenReturn(Optional.empty());
+        when(repository.findById(7L)).thenReturn(Optional.empty());
+
+        BusinessException e = assertThrows(BusinessException.class, () -> service.accessToken(7L));
+        assertEquals("Esta ONG não está recebendo doações no momento.", e.getMessage());
     }
 }
