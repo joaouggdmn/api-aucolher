@@ -26,6 +26,13 @@ public interface MercadoPagoAccountRepository extends JpaRepository<MercadoPagoA
             + "where a.ngoId = :ngoId and a.status = :status")
     boolean existsByNgoIdAndStatus(@Param("ngoId") Long ngoId, @Param("status") MercadoPagoAccountStatus status);
 
+    /** CONNECTED → NEEDS_RECONNECT sem carregar a entidade (nem descriptografar os tokens). */
+    @Modifying
+    @Query("update MercadoPagoAccount a set a.status = com.aucolher.api.payment.MercadoPagoAccountStatus.NEEDS_RECONNECT, "
+            + "a.updatedAt = :now where a.ngoId = :ngoId "
+            + "and a.status = com.aucolher.api.payment.MercadoPagoAccountStatus.CONNECTED")
+    int markNeedsReconnect(@Param("ngoId") Long ngoId, @Param("now") LocalDateTime now);
+
     List<MercadoPagoAccount> findByStatusAndExpiresAtBefore(MercadoPagoAccountStatus status, LocalDateTime limit);
 
     /**
