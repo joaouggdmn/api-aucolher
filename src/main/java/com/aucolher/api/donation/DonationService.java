@@ -7,6 +7,8 @@ import com.aucolher.api.campaign.entity.Campaign;
 import com.aucolher.api.donation.dto.*;
 import com.aucolher.api.donation.entity.Donation;
 import com.aucolher.api.donation.entity.DonationStatus;
+import com.aucolher.api.payment.MercadoPagoApiException;
+import com.aucolher.api.payment.MercadoPagoClient;
 import com.aucolher.api.shared.exception.BusinessException;
 import com.aucolher.api.shared.exception.ForbiddenException;
 import com.aucolher.api.shared.exception.ResourceNotFoundException;
@@ -39,7 +41,7 @@ public class DonationService {
     private final CampaignService campaignService;
     private final UserRepository users;
     private final MercadoPagoAccountGateway accounts;
-    private final MercadoPagoPixClient pix;
+    private final MercadoPagoClient mercadoPago;
 
     // ----------------------------------------------------------------- criar
 
@@ -59,7 +61,7 @@ public class DonationService {
         }
         BigDecimal amount = validateAmount(req);
         if (!accounts.isConnected(campaign.getNgoId())) {
-            throw new BusinessException("Esta ONG não está recebendo doações no momento.");
+            throw new BusinessException(MercadoPagoAccountGateway.NOT_RECEIVING_DONATIONS);
         }
 
         Donation d = new Donation();
@@ -73,12 +75,19 @@ public class DonationService {
         d.setExpiresAt(d.getCreatedAt().plusMinutes(PIX_MINUTES));
         donations.saveAndFlush(d);                                          // precisa do id (idempotência)
 
-        MercadoPagoPixClient.PixOrder order;
+        MercadoPagoClient.PixOrder order;
         try {
-            order = pix.createPixOrder(accounts.accessToken(campaign.getNgoId()), d.getId(),
+            // Chave nova a cada doação: o id se repete entre bancos diferentes usando a mesma conta,
+            // e o Mercado Pago devolveria a order antiga para a mesma chave.
+            order = mercadoPago.createPixOrder(accounts.accessToken(campaign.getNgoId()),
+                    UUID.randomUUID().toString(), "donation-" + d.getId(),
                     amount, user.getEmail(), user.getName());
-        } catch (MercadoPagoException e) {
+        } catch (MercadoPagoApiException e) {
             // a transação desfaz a doação; o doador pode tentar de novo
+            if (e.getHttpStatus() == 401) {
+                accounts.markNeedsReconnect(campaign.getNgoId());
+                throw new BusinessException(MercadoPagoAccountGateway.NOT_RECEIVING_DONATIONS);
+            }
             throw new BusinessException("Não foi possível gerar o PIX agora. Tente novamente em instantes.");
         }
         d.setMpOrderId(order.orderId());
@@ -121,7 +130,9 @@ public class DonationService {
         if (effectiveStatus(d) == DonationStatus.PENDING && d.getMpOrderId() != null) {
             try {
                 approveIfPaid(d);
-            } catch (MercadoPagoException e) {
+            } catch (MercadoPagoApiException | BusinessException e) {
+                // BusinessException = conta da ONG caiu. O PIX já gerado continua valendo (contrato):
+                // responde a doação como está e o webhook ainda pode confirmar.
                 log.warn("Não consegui consultar a order da doação {}: {}", id, e.getMessage());
             }
             d = donations.findById(id).orElseThrow();
@@ -151,17 +162,21 @@ public class DonationService {
 
     // ------------------------------------------------------------- aprovação
 
-    /** Webhook: acha a doação pela order e confirma no Mercado Pago (não confia no corpo recebido). */
-    @Transactional
-    public void onWebhook(String orderId) {
-        donations.findByMpOrderId(orderId).ifPresent(this::approveIfPaid);
-    }
-
-    /** Consulta a order com o token da ONG (donations.ngo_id) e aprova de forma atômica. */
+    /**
+     * Polling do modal: consulta a order com o token da ONG (donations.ngo_id) e aprova de forma atômica.
+     * O webhook faz o mesmo em payment/MercadoPagoWebhookService.
+     */
     private void approveIfPaid(Donation d) {
-        MercadoPagoPixClient.OrderState state =
-                pix.getOrder(accounts.accessToken(d.getNgoId()), d.getMpOrderId());
-        if (state.paid()) {
+        MercadoPagoClient.OrderPaymentState state;
+        try {
+            state = mercadoPago.getOrderState(accounts.accessToken(d.getNgoId()), d.getMpOrderId());
+        } catch (MercadoPagoApiException e) {
+            if (e.getHttpStatus() == 401) {
+                accounts.markNeedsReconnect(d.getNgoId());
+            }
+            throw e;
+        }
+        if (state == MercadoPagoClient.OrderPaymentState.PAID) {
             donations.approve(d.getId(), LocalDateTime.now());   // 0 linhas = outro caminho já aprovou
         }
     }

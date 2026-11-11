@@ -9,14 +9,18 @@ import java.util.Locale;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
-/** Valida o x-signature do webhook: HMAC-SHA256 de "id:{data.id};request-id:{x-request-id};ts:{ts};". */
+/**
+ * Valida o x-signature ("ts=...,v1=...") do webhook: HMAC-SHA256 de "id:{data.id};request-id:{x-request-id};ts:{ts};",
+ * com o data.id em minúsculas se for alfanumérico. Como manda a documentação do Mercado Pago, a parte
+ * que não veio na notificação sai do texto.
+ */
 public final class MercadoPagoSignatureVerifier {
 
     private MercadoPagoSignatureVerifier() {
     }
 
     public static boolean isValid(String secret, String signatureHeader, String requestId, String dataId) {
-        if (isBlank(secret) || isBlank(signatureHeader) || isBlank(requestId) || isBlank(dataId)) {
+        if (isBlank(secret) || isBlank(signatureHeader)) {
             return false;
         }
         String ts = null;
@@ -31,7 +35,7 @@ public final class MercadoPagoSignatureVerifier {
                 }
             }
         }
-        if (ts == null || v1 == null) {
+        if (isBlank(ts) || isBlank(v1)) {
             return false;
         }
         String expected = computeSignature(secret, dataId, requestId, ts);
@@ -41,12 +45,19 @@ public final class MercadoPagoSignatureVerifier {
     }
 
     public static String computeSignature(String secret, String dataId, String requestId, String ts) {
-        String id = dataId.matches("[A-Za-z0-9]+") ? dataId.toLowerCase(Locale.ROOT) : dataId;
-        String manifest = "id:" + id + ";request-id:" + requestId + ";ts:" + ts + ";";
+        StringBuilder manifest = new StringBuilder();
+        if (!isBlank(dataId)) {
+            String id = dataId.matches("[A-Za-z0-9]+") ? dataId.toLowerCase(Locale.ROOT) : dataId;
+            manifest.append("id:").append(id).append(';');
+        }
+        if (!isBlank(requestId)) {
+            manifest.append("request-id:").append(requestId).append(';');
+        }
+        manifest.append("ts:").append(ts).append(';');
         try {
             Mac mac = Mac.getInstance("HmacSHA256");
             mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
-            return HexFormat.of().formatHex(mac.doFinal(manifest.getBytes(StandardCharsets.UTF_8)));
+            return HexFormat.of().formatHex(mac.doFinal(manifest.toString().getBytes(StandardCharsets.UTF_8)));
         } catch (GeneralSecurityException e) {
             throw new IllegalStateException(e);
         }

@@ -21,6 +21,18 @@ public interface MercadoPagoAccountRepository extends JpaRepository<MercadoPagoA
     @Query("select a from MercadoPagoAccount a where a.ngoId = :ngoId")
     Optional<MercadoPagoAccount> findForUpdate(@Param("ngoId") Long ngoId);
 
+    /** Só o id e o status: não descriptografa os tokens (funciona mesmo sem MP_TOKEN_ENCRYPTION_KEY). */
+    @Query("select case when count(a) > 0 then true else false end from MercadoPagoAccount a "
+            + "where a.ngoId = :ngoId and a.status = :status")
+    boolean existsByNgoIdAndStatus(@Param("ngoId") Long ngoId, @Param("status") MercadoPagoAccountStatus status);
+
+    /** CONNECTED → NEEDS_RECONNECT sem carregar a entidade (nem descriptografar os tokens). */
+    @Modifying
+    @Query("update MercadoPagoAccount a set a.status = com.aucolher.api.payment.MercadoPagoAccountStatus.NEEDS_RECONNECT, "
+            + "a.updatedAt = :now where a.ngoId = :ngoId "
+            + "and a.status = com.aucolher.api.payment.MercadoPagoAccountStatus.CONNECTED")
+    int markNeedsReconnect(@Param("ngoId") Long ngoId, @Param("now") LocalDateTime now);
+
     List<MercadoPagoAccount> findByStatusAndExpiresAtBefore(MercadoPagoAccountStatus status, LocalDateTime limit);
 
     /**

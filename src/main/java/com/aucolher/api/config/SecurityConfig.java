@@ -75,7 +75,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/campaigns/mine").authenticated()
                 .requestMatchers(HttpMethod.GET, "/api/campaigns", "/api/campaigns/*").permitAll()
                 // Quem chama o webhook é o Mercado Pago, sem token: a segurança é a
-                // assinatura x-signature, conferida no MercadoPagoWebhookValidator
+                // assinatura x-signature, conferida no MercadoPagoSignatureVerifier (payment/)
                 .requestMatchers(HttpMethod.POST, "/api/webhooks/mercadopago").permitAll()
                 // Volta do OAuth do Mercado Pago: quem chega é o navegador da ONG, sem o nosso
                 // token. A segurança é o state assinado, conferido no OAuthStateService
