@@ -15,7 +15,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 class OAuthStateServiceTest {
 
     private final OAuthStateService service = new OAuthStateService(
-            new MercadoPagoProperties("id", "secret", "http://x", "wh", "k", false, "segredo-de-teste"),
+            new MercadoPagoProperties("id", "secret", "http://x", "wh", "k", false, "segredo-de-teste", null, false),
             new ObjectMapper());
 
     @Test

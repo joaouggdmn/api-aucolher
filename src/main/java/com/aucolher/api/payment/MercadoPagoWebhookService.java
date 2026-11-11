@@ -45,11 +45,18 @@ public class MercadoPagoWebhookService {
         try {
             state = client.getOrderState(token, orderId);
         } catch (MercadoPagoApiException e) {
-            if (e.isAuthFailure()) {
-                log.warn("Webhook: token da ONG {} recusado ao consultar a order", donation.ngoId());
+            int http = e.getHttpStatus();
+            if (http == 401) {
+                oauth.markNeedsReconnect(donation.ngoId()); // acesso revogado: a ONG precisa reconectar
                 return;
             }
-            // erro temporário: responde 5xx para o Mercado Pago repetir a notificação
+            if (http >= 400 && http < 500 && http != 429) {
+                // recusa definitiva (order de outra conta, id inválido): repetir não resolveria
+                log.warn("Webhook: Mercado Pago recusou a consulta da order da doação {} (http {})",
+                        donation.id(), http);
+                return;
+            }
+            // rede, 429 ou 5xx: responde 5xx para o Mercado Pago repetir a notificação
             throw new ApiException(HttpStatus.BAD_GATEWAY, "Não foi possível consultar a order agora.");
         }
 

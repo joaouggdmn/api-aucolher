@@ -11,17 +11,20 @@ import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import com.aucolher.api.campaign.MercadoPagoAccountGateway;
 import com.aucolher.api.common.ApiException;
 import com.aucolher.api.common.DonationGateway;
 import com.aucolher.api.common.UserDirectory;
 import com.aucolher.api.payment.dto.MercadoPagoAccountDTO;
+import com.aucolher.api.shared.exception.BusinessException;
 
-/** Vínculo OAuth da conta Mercado Pago de cada ONG, renovação e desconexão. */
+/** Vínculo OAuth da conta Mercado Pago de cada ONG, renovação e desconexão. Fornece o token das doações. */
 @Service
-public class MercadoPagoOAuthService {
+public class MercadoPagoOAuthService implements MercadoPagoAccountGateway {
 
     public enum CallbackResult {
         CONNECTED("connected"), DENIED("denied"), ALREADY_LINKED("already_linked"), ERROR("error");
@@ -67,6 +70,10 @@ public class MercadoPagoOAuthService {
         this.users = users;
         this.donations = donations;
         this.tx = new TransactionTemplate(transactionManager);
+        // Transação própria, mesmo quando chamado de dentro da criação da doação: o Mercado Pago troca
+        // o refresh_token a cada renovação, e um rollback da doação (PIX recusado) apagaria o novo
+        // token já trocado, ou um NEEDS_RECONNECT já descoberto.
+        this.tx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     // ------------------------------------------------------------------ conexão
@@ -164,12 +171,42 @@ public class MercadoPagoOAuthService {
                 .orElseGet(MercadoPagoAccountDTO::notConnected);
     }
 
-    /** Usado pelo módulo de campanhas: acceptingDonations = ACTIVE e esta conta CONNECTED. */
-    @Transactional(readOnly = true)
-    public boolean isConnected(long ngoId) {
-        return repository.findById(ngoId)
-                .map(a -> a.getStatus() == MercadoPagoAccountStatus.CONNECTED)
-                .orElse(false);
+    /**
+     * Usado por campanhas (acceptingDonations = ACTIVE e esta conta CONNECTED) e doações.
+     * Não carrega a entidade: a lista pública de campanhas não pode depender da chave dos tokens.
+     */
+    @Override
+    public boolean isConnected(Long ngoId) {
+        return ngoId != null && repository.existsByNgoIdAndStatus(ngoId, MercadoPagoAccountStatus.CONNECTED);
+    }
+
+    /** Token para criar e consultar as orders das doações, na frase do contrato quando a conta não serve. */
+    @Override
+    public String accessToken(Long ngoId) {
+        if (ngoId == null) {
+            throw new BusinessException(NOT_RECEIVING_DONATIONS);
+        }
+        try {
+            return getValidAccessToken(ngoId);
+        } catch (ApiException e) {
+            log.warn("Sem token utilizável para a ONG {} (http {})", ngoId, e.getStatus().value());
+            throw new BusinessException(NOT_RECEIVING_DONATIONS);
+        }
+    }
+
+    /**
+     * Só para 401 do Mercado Pago ao criar ou consultar order. Não use isAuthFailure(), que também
+     * aceita 400: uma order mal formada não é acesso revogado.
+     */
+    @Override
+    public void markNeedsReconnect(Long ngoId) {
+        if (ngoId == null) {
+            return;
+        }
+        Integer changed = tx.execute(status -> repository.markNeedsReconnect(ngoId, LocalDateTime.now()));
+        if (changed != null && changed > 0) {
+            log.warn("Mercado Pago recusou o token da ONG {} (401): precisa reconectar", ngoId);
+        }
     }
 
     @Transactional

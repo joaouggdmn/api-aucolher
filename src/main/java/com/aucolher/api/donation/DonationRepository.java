@@ -10,7 +10,6 @@ import org.springframework.data.repository.query.Param;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
-import java.util.Optional;
 
 public interface DonationRepository extends JpaRepository<Donation, Long> {
 
@@ -40,8 +39,6 @@ public interface DonationRepository extends JpaRepository<Donation, Long> {
             + "com.aucolher.api.donation.entity.DonationStatus.PENDING, "
             + "com.aucolher.api.donation.entity.DonationStatus.CANCELLED)")
     int approve(@Param("id") Long id, @Param("now") LocalDateTime now);
-
-    Optional<Donation> findByMpOrderId(String mpOrderId);
 
     /** Números da Visão geral do admin (as APPROVED, inclusive de campanhas excluídas). */
     List<Donation> findByStatus(DonationStatus status);
