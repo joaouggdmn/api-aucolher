@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 class TokenCryptoConverterTest {
 
     private static MercadoPagoProperties props(String key) {
-        return new MercadoPagoProperties("id", "secret", "http://x", "wh", key, false, "state");
+        return new MercadoPagoProperties("id", "secret", "http://x", "wh", key, false, "state", null, false);
     }
 
     private static String newKey() {

@@ -9,6 +9,9 @@ import com.aucolher.api.donation.dto.DonationRequestDTO;
 import com.aucolher.api.donation.dto.DonationResponseDTO;
 import com.aucolher.api.donation.entity.Donation;
 import com.aucolher.api.donation.entity.DonationStatus;
+import com.aucolher.api.payment.MercadoPagoApiException;
+import com.aucolher.api.payment.MercadoPagoClient;
+import com.aucolher.api.payment.MercadoPagoClient.OrderPaymentState;
 import com.aucolher.api.shared.exception.BusinessException;
 import com.aucolher.api.shared.exception.ForbiddenException;
 import com.aucolher.api.shared.exception.ResourceNotFoundException;
@@ -17,6 +20,7 @@ import com.aucolher.api.user.entity.User;
 import com.aucolher.api.user.entity.UserType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -27,12 +31,12 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
@@ -56,7 +60,7 @@ class DonationServiceTest {
     @Mock
     private MercadoPagoAccountGateway accounts;
     @Mock
-    private MercadoPagoPixClient pix;
+    private MercadoPagoClient pix;
 
     @InjectMocks
     private DonationService service;
@@ -71,8 +75,10 @@ class DonationServiceTest {
         when(accounts.isConnected(1L)).thenReturn(true);
         when(accounts.accessToken(1L)).thenReturn("token-da-ong");
         givenSavedWithId(259L);
-        when(pix.createPixOrder(eq("token-da-ong"), eq(259L), any(), eq(DONOR_EMAIL), anyString()))
-                .thenReturn(new MercadoPagoPixClient.PixOrder("ORD123", "00020126pix", "iVBOR", "https://mp/ticket"));
+        ArgumentCaptor<String> idempotencyKey = ArgumentCaptor.forClass(String.class);
+        when(pix.createPixOrder(eq("token-da-ong"), idempotencyKey.capture(), eq("donation-259"), any(),
+                eq(DONOR_EMAIL), eq("Maria")))
+                .thenReturn(new MercadoPagoClient.PixOrder("ORD123", "00020126pix", "iVBOR", "https://mp/ticket"));
         when(users.findById(1L)).thenReturn(Optional.of(ngo()));
 
         DonationResponseDTO dto = service.create(4L, new DonationRequestDTO(new BigDecimal("50")), auth());
@@ -84,6 +90,8 @@ class DonationServiceTest {
         assertThat(dto.campaign().ngoName()).isEqualTo("Patinhas");
         assertThat(dto.campaign().removed()).isFalse();
         assertThat(dto.donor()).isNull();
+        // UUID: o id da doação se repete entre bancos diferentes usando a mesma conta
+        assertThat(UUID.fromString(idempotencyKey.getValue())).isNotNull();
     }
 
     @Test
@@ -159,11 +167,28 @@ class DonationServiceTest {
         when(accounts.isConnected(1L)).thenReturn(true);
         when(accounts.accessToken(1L)).thenReturn("token-da-ong");
         givenSavedWithId(259L);
-        when(pix.createPixOrder(any(), anyLong(), any(), any(), any())).thenThrow(new MercadoPagoException("recusou"));
+        when(pix.createPixOrder(any(), any(), any(), any(), any(), any())).thenThrow(new MercadoPagoApiException(400, "recusou"));
 
         assertThatThrownBy(() -> service.create(4L, new DonationRequestDTO(new BigDecimal("50")), auth()))
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Não foi possível gerar o PIX agora. Tente novamente em instantes.");
+        // 400 é order mal formada, não acesso revogado
+        verify(accounts, never()).markNeedsReconnect(any());
+    }
+
+    @Test
+    void revokedNgoTokenMarksTheAccountForReconnection() {
+        givenLogged(person());
+        when(campaignService.findPublic(4L)).thenReturn(campaign());
+        when(accounts.isConnected(1L)).thenReturn(true);
+        when(accounts.accessToken(1L)).thenReturn("token-da-ong");
+        givenSavedWithId(259L);
+        when(pix.createPixOrder(any(), any(), any(), any(), any(), any())).thenThrow(new MercadoPagoApiException(401, "revogado"));
+
+        assertThatThrownBy(() -> service.create(4L, new DonationRequestDTO(new BigDecimal("50")), auth()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("Esta ONG não está recebendo doações no momento.");
+        verify(accounts).markNeedsReconnect(1L);
     }
 
     // ===================== Consulta (polling do modal) =====================
@@ -176,7 +201,7 @@ class DonationServiceTest {
         approved.setApprovedAt(LocalDateTime.now());
         when(donations.findById(259L)).thenReturn(Optional.of(pending), Optional.of(approved));
         when(accounts.accessToken(1L)).thenReturn("token-da-ong");
-        when(pix.getOrder("token-da-ong", "ORD123")).thenReturn(new MercadoPagoPixClient.OrderState(true, "processed", "accredited"));
+        when(pix.getOrderState("token-da-ong", "ORD123")).thenReturn(OrderPaymentState.PAID);
 
         DonationResponseDTO dto = service.getById(259L, auth());
 
@@ -190,7 +215,7 @@ class DonationServiceTest {
         givenLogged(person());
         when(donations.findById(259L)).thenReturn(Optional.of(donation(DonationStatus.PENDING, LocalDateTime.now().plusMinutes(20))));
         when(accounts.accessToken(1L)).thenReturn("token-da-ong");
-        when(pix.getOrder("token-da-ong", "ORD123")).thenReturn(new MercadoPagoPixClient.OrderState(false, "action_required", "waiting_transfer"));
+        when(pix.getOrderState("token-da-ong", "ORD123")).thenReturn(OrderPaymentState.WAITING);
 
         DonationResponseDTO dto = service.getById(259L, auth());
 
@@ -225,6 +250,20 @@ class DonationServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("Esta ONG não está recebendo doações no momento.");
         verifyNoInteractions(pix);
+    }
+
+    @Test
+    void pollingWithARevokedTokenKeepsThePixAndMarksTheAccount() {
+        givenLogged(person());
+        when(donations.findById(259L)).thenReturn(Optional.of(donation(DonationStatus.PENDING, LocalDateTime.now().plusMinutes(20))));
+        when(accounts.accessToken(1L)).thenReturn("token-da-ong");
+        when(pix.getOrderState("token-da-ong", "ORD123")).thenThrow(new MercadoPagoApiException(401, "revogado"));
+
+        DonationResponseDTO dto = service.getById(259L, auth());
+
+        verify(accounts).markNeedsReconnect(1L);
+        assertThat(dto.status()).isEqualTo(DonationStatus.PENDING);
+        assertThat(dto.pix().qrCode()).isEqualTo("00020126pix");
     }
 
     @Test
@@ -298,29 +337,6 @@ class DonationServiceTest {
 
         assertThat(dto.donor().name()).isEqualTo("Maria");
         assertThat(dto.pix()).isNull();
-    }
-
-    // ===================== Webhook =====================
-
-    @Test
-    void webhookIgnoresUnknownOrders() {
-        when(donations.findByMpOrderId("OUTRA")).thenReturn(Optional.empty());
-
-        service.onWebhook("OUTRA");
-
-        verifyNoInteractions(pix);
-    }
-
-    @Test
-    void webhookWithoutTheNgoTokenIsAcceptedAndIgnored() {
-        when(donations.findByMpOrderId("ORD123"))
-                .thenReturn(Optional.of(donation(DonationStatus.PENDING, LocalDateTime.now().plusMinutes(20))));
-        when(accounts.accessToken(1L)).thenThrow(new BusinessException("Esta ONG não está recebendo doações no momento."));
-
-        service.onWebhook("ORD123");
-
-        verifyNoInteractions(pix);
-        verify(donations, never()).approve(anyLong(), any());
     }
 
     // ===================== Apoio =====================

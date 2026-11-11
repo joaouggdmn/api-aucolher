@@ -14,4 +14,10 @@ public interface MercadoPagoAccountGateway {
      * Conta ausente, NEEDS_RECONNECT ou token vencido: BusinessException com NOT_RECEIVING_DONATIONS.
      */
     String accessToken(Long ngoId);
+
+    /**
+     * O Mercado Pago recusou o token da ONG com 401 (acesso revogado): conta vira NEEDS_RECONNECT.
+     * Grava em transação própria, que sobrevive ao rollback de quem chamou.
+     */
+    void markNeedsReconnect(Long ngoId);
 }

@@ -17,15 +17,13 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** Camada HTTP das doações e do webhook. As regras estão em DonationServiceTest. */
-@WebMvcTest({DonationController.class, MercadoPagoWebhookController.class})
+/** Camada HTTP das doações. As regras estão em DonationServiceTest; o webhook, em payment/. */
+@WebMvcTest(DonationController.class)
 @Import(SecurityConfig.class)
 class DonationControllerTest {
 
@@ -34,8 +32,6 @@ class DonationControllerTest {
 
     @MockBean
     private DonationService donationService;
-    @MockBean
-    private MercadoPagoWebhookValidator webhookValidator;
 
     // Dependências da configuração de segurança real, importada acima
     @MockBean
@@ -65,18 +61,5 @@ class DonationControllerTest {
                 .andExpect(status().isCreated());
 
         verify(donationService).create(eq(4L), any(), any());
-    }
-
-    @Test
-    void webhookIsPublicButNeedsTheSignature() throws Exception {
-        mockMvc.perform(post("/api/webhooks/mercadopago").param("data.id", "ORD123").param("type", "order"))
-                .andExpect(status().isUnauthorized());
-        verify(donationService, never()).onWebhook(any());
-
-        when(webhookValidator.isValid("ts=1,v1=abc", "req-1", "ORD123")).thenReturn(true);
-        mockMvc.perform(post("/api/webhooks/mercadopago").param("data.id", "ORD123").param("type", "order")
-                        .header("x-signature", "ts=1,v1=abc").header("x-request-id", "req-1"))
-                .andExpect(status().isOk());
-        verify(donationService).onWebhook("ORD123");
     }
 }

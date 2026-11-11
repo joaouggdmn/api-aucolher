@@ -2,6 +2,7 @@ package com.aucolher.api.payment;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -20,6 +21,7 @@ import org.springframework.web.client.RestClientResponseException;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * Chamadas ao Mercado Pago. Nunca loga token, code nem client_secret.
@@ -45,15 +47,23 @@ public class MercadoPagoClient {
     public record PixOrder(String orderId, String qrCode, String qrCodeBase64, String ticketUrl) {
     }
 
+    /** Pagador de teste do sandbox: "APRO" aprova o PIX sozinho. */
+    static final String SANDBOX_PAYER_EMAIL = "test@testuser.com";
+    static final String SANDBOX_PAYER_NAME = "APRO";
+    /** O PIX vence junto com a doação (30 minutos). */
+    static final String PIX_EXPIRATION = "PT30M";
+
     private final RestClient rest;
     private final MercadoPagoProperties props;
+    private final ObjectMapper mapper;
 
-    public MercadoPagoClient(MercadoPagoProperties props) {
+    public MercadoPagoClient(MercadoPagoProperties props, ObjectMapper mapper) {
         this.props = props;
+        this.mapper = mapper;
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(10_000);
         factory.setReadTimeout(15_000);
-        this.rest = RestClient.builder().baseUrl("https://api.mercadopago.com").requestFactory(factory).build();
+        this.rest = RestClient.builder().baseUrl(props.baseUrl()).requestFactory(factory).build();
     }
 
     /** Troca o code pelos tokens (redirect_uri idêntica à do início da conexão). */
@@ -98,44 +108,58 @@ public class MercadoPagoClient {
         }
     }
 
-    /** Cria a order PIX com o token da ONG. Sem marketplace_fee: a plataforma não cobra comissão. */
+    /**
+     * Cria a order PIX com o token da ONG. Sem marketplace_fee: a plataforma não cobra comissão.
+     * idempotencyKey é única por doação (UUID): ids de bancos diferentes usando a mesma conta se repetem.
+     * Order sem o "copia e cola" é recusada (502): o doador não teria como pagar.
+     */
     public PixOrder createPixOrder(String accessToken, String idempotencyKey, String externalReference,
-                                   BigDecimal amount, String payerEmail) {
+                                   BigDecimal amount, String payerEmail, String payerName) {
         String value = amount.setScale(2, RoundingMode.HALF_UP).toPlainString();
-        Map<String, Object> payment = Map.of(
-                "amount", value,
-                "payment_method", Map.of("id", "pix", "type", "bank_transfer"));
+        Map<String, Object> payment = new LinkedHashMap<>();
+        payment.put("amount", value);
+        payment.put("payment_method", Map.of("id", "pix", "type", "bank_transfer"));
+        payment.put("expiration_time", PIX_EXPIRATION);
+        Map<String, Object> payer = new LinkedHashMap<>();
+        payer.put("email", props.sandbox() ? SANDBOX_PAYER_EMAIL : payerEmail);
+        payer.put("first_name", props.sandbox() ? SANDBOX_PAYER_NAME : firstName(payerName));
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("type", "online");
         body.put("processing_mode", "automatic");
         body.put("total_amount", value);
         body.put("external_reference", externalReference);
-        body.put("payer", Map.of("email", payerEmail));
+        body.put("payer", payer);
         body.put("transactions", Map.of("payments", List.of(payment)));
+        JsonNode root;
         try {
-            JsonNode root = rest.post().uri("/v1/orders")
+            root = rest.post().uri("/v1/orders")
                     .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
                     .header("X-Idempotency-Key", idempotencyKey)
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(body)
                     .retrieve()
                     .body(JsonNode.class);
-            if (root == null || text(root.path("id")) == null) {
-                throw new MercadoPagoApiException(502, "Resposta da order vazia.");
-            }
-            JsonNode method = root.path("transactions").path("payments").path(0).path("payment_method");
-            return new PixOrder(
-                    text(root.path("id")),
-                    text(method.path("qr_code")),
-                    text(method.path("qr_code_base64")),
-                    text(method.path("ticket_url")));
         } catch (RestClientResponseException e) {
-            log.warn("Mercado Pago POST /v1/orders respondeu {}", e.getStatusCode().value());
+            log.warn("Mercado Pago POST /v1/orders respondeu {} {}", e.getStatusCode().value(), errorCodes(e));
             throw new MercadoPagoApiException(e.getStatusCode().value(), "Mercado Pago recusou a criação da order.");
         } catch (RestClientException e) {
             log.warn("Falha de rede em POST /v1/orders: {}", e.getClass().getSimpleName());
             throw new MercadoPagoApiException(0, "Falha ao falar com o Mercado Pago.");
         }
+        if (root == null || text(root.path("id")) == null) {
+            throw new MercadoPagoApiException(502, "Resposta da order vazia.");
+        }
+        JsonNode method = root.path("transactions").path("payments").path(0).path("payment_method");
+        String qrCode = text(method.path("qr_code"));
+        if (qrCode == null || qrCode.isBlank()) {
+            log.warn("Order {} criada sem o código PIX", text(root.path("id")));
+            throw new MercadoPagoApiException(502, "O Mercado Pago não devolveu o código PIX.");
+        }
+        return new PixOrder(
+                text(root.path("id")),
+                qrCode,
+                text(method.path("qr_code_base64")),
+                text(method.path("ticket_url")));
     }
 
     public OrderPaymentState getOrderState(String accessToken, String orderId) {
@@ -156,7 +180,7 @@ public class MercadoPagoClient {
             }
             return mapOrderState(status, detail);
         } catch (RestClientResponseException e) {
-            log.warn("Mercado Pago GET /v1/orders respondeu {}", e.getStatusCode().value());
+            log.warn("Mercado Pago GET /v1/orders respondeu {} {}", e.getStatusCode().value(), errorCodes(e));
             throw new MercadoPagoApiException(e.getStatusCode().value(), "Mercado Pago recusou a consulta da order.");
         } catch (RestClientException e) {
             log.warn("Falha de rede em GET /v1/orders: {}", e.getClass().getSimpleName());
@@ -182,6 +206,30 @@ public class MercadoPagoClient {
             return OrderPaymentState.WAITING;
         }
         return OrderPaymentState.UNKNOWN;
+    }
+
+    /** Só os códigos de erro da resposta (ex.: [invalid_total_amount]): o corpo inteiro pode trazer dados do pagador. */
+    private String errorCodes(RestClientResponseException e) {
+        try {
+            JsonNode errors = mapper.readTree(e.getResponseBodyAsString()).path("errors");
+            List<String> codes = new ArrayList<>();
+            errors.forEach(err -> {
+                String code = text(err.path("code"));
+                if (code != null) {
+                    codes.add(code);
+                }
+            });
+            return codes.toString();
+        } catch (Exception ignored) {
+            return "[]";
+        }
+    }
+
+    private static String firstName(String name) {
+        if (name == null || name.isBlank()) {
+            return "Doador";
+        }
+        return name.trim().split("\\s+")[0];
     }
 
     private static String text(JsonNode node) {

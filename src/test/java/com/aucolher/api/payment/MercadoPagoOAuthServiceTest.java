@@ -41,7 +41,7 @@ class MercadoPagoOAuthServiceTest {
 
     @BeforeEach
     void setUp() {
-        props = new MercadoPagoProperties("cid", "csecret", "https://api.x/cb", "wh", "key", false, "segredo");
+        props = new MercadoPagoProperties("cid", "csecret", "https://api.x/cb", "wh", "key", false, "segredo", null, false);
         repository = mock(MercadoPagoAccountRepository.class);
         client = mock(MercadoPagoClient.class);
         stateService = new OAuthStateService(props, new ObjectMapper());
@@ -134,7 +134,7 @@ class MercadoPagoOAuthServiceTest {
 
     @Test
     void startConnectionWithoutClientIdIs503() {
-        var empty = new MercadoPagoProperties("", "", "", "", "", false, "");
+        var empty = new MercadoPagoProperties("", "", "", "", "", false, "", null, false);
         var s = new MercadoPagoOAuthService(empty, repository, client, stateService, users, donations,
                 mock(PlatformTransactionManager.class));
         ApiException e = assertThrows(ApiException.class, () -> s.startConnection(7L));
@@ -202,5 +202,18 @@ class MercadoPagoOAuthServiceTest {
 
         BusinessException e = assertThrows(BusinessException.class, () -> service.accessToken(7L));
         assertEquals("Esta ONG não está recebendo doações no momento.", e.getMessage());
+    }
+
+    @Test
+    void markNeedsReconnectWritesInItsOwnTransactionWithoutLoadingTheTokens() {
+        when(repository.markNeedsReconnect(any(), any())).thenReturn(1);
+
+        service.markNeedsReconnect(7L);
+
+        verify(repository).markNeedsReconnect(org.mockito.ArgumentMatchers.eq(7L), any());
+        verify(repository, never()).findForUpdate(any());
+        ArgumentCaptor<TransactionDefinition> definition = ArgumentCaptor.forClass(TransactionDefinition.class);
+        verify(txManager).getTransaction(definition.capture());
+        assertEquals(TransactionDefinition.PROPAGATION_REQUIRES_NEW, definition.getValue().getPropagationBehavior());
     }
 }

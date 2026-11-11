@@ -194,6 +194,21 @@ public class MercadoPagoOAuthService implements MercadoPagoAccountGateway {
         }
     }
 
+    /**
+     * Só para 401 do Mercado Pago ao criar ou consultar order. Não use isAuthFailure(), que também
+     * aceita 400: uma order mal formada não é acesso revogado.
+     */
+    @Override
+    public void markNeedsReconnect(Long ngoId) {
+        if (ngoId == null) {
+            return;
+        }
+        Integer changed = tx.execute(status -> repository.markNeedsReconnect(ngoId, LocalDateTime.now()));
+        if (changed != null && changed > 0) {
+            log.warn("Mercado Pago recusou o token da ONG {} (401): precisa reconectar", ngoId);
+        }
+    }
+
     @Transactional
     public void disconnect(long ngoId) {
         if (!repository.existsById(ngoId)) {
