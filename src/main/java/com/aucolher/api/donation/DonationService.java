@@ -35,6 +35,8 @@ public class DonationService {
     private static final BigDecimal MIN_AMOUNT = BigDecimal.valueOf(5);
     private static final BigDecimal MAX_AMOUNT = BigDecimal.valueOf(100_000);
     private static final int PIX_MINUTES = 30;
+    /** A consulta periódica ainda confere o PIX até 10 minutos depois de vencer. */
+    private static final int RECONCILE_AFTER_EXPIRY_MINUTES = 10;
 
     private final DonationRepository donations;
     private final CampaignRepository campaigns;
@@ -161,6 +163,30 @@ public class DonationService {
     }
 
     // ------------------------------------------------------------- aprovação
+
+    /**
+     * Consulta periódica (B3, DonationReconciliationJob): os PIX pendentes que ainda podem ser
+     * pagos. Cobre quem fecha a janela do PIX antes de pagar, já que o polling do modal para.
+     */
+    @Transactional(readOnly = true)
+    public List<Long> pendingToReconcile() {
+        return donations.findIdsToReconcile(LocalDateTime.now().minusMinutes(RECONCILE_AFTER_EXPIRY_MINUTES));
+    }
+
+    /** Uma doação da consulta periódica. Falha do Mercado Pago fica para a próxima rodada. */
+    @Transactional
+    public void reconcile(Long id) {
+        donations.findById(id)
+                .filter(d -> d.getStatus() == DonationStatus.PENDING && d.getMpOrderId() != null)
+                .ifPresent(d -> {
+                    try {
+                        approveIfPaid(d);
+                    } catch (MercadoPagoApiException | BusinessException e) {
+                        log.warn("Consulta periódica: não consegui consultar a order da doação {}: {}",
+                                id, e.getMessage());
+                    }
+                });
+    }
 
     /**
      * Polling do modal: consulta a order com o token da ONG (donations.ngo_id) e aprova de forma atômica.
