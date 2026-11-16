@@ -53,24 +53,24 @@ src/main/java/com/aucolher/api/
 │   ├── CampaignController.java
 │   ├── CampaignService.java                # Regras: uma urgente ativa por ONG, prazo vencido = encerrada, exclusão real ou lógica
 │   ├── CampaignRepository.java
-│   ├── MercadoPagoAccountGateway.java      # A conta Mercado Pago da ONG (por ora, o Placeholder com um token de teste)
+│   ├── MercadoPagoAccountGateway.java      # A conta Mercado Pago da ONG (implementada por payment/MercadoPagoOAuthService)
 │   ├── entity/                             # Campaign + CampaignCategory, CampaignStatus
 │   └── dto/                                # CampaignRequestDTO, CampaignResponseDTO, CampaignNgoDTO
 ├── donation/                               # Doações por PIX (Mercado Pago, Orders API)
 │   ├── DonationController.java
-│   ├── DonationService.java                # Cria o PIX, polling da order, aprovação atômica
-│   ├── MercadoPagoPixClient.java           # Chamadas à Orders API (criar e consultar a order)
-│   ├── MercadoPagoWebhookController.java / MercadoPagoWebhookValidator.java  # Webhook com a assinatura x-signature
+│   ├── DonationService.java                # Cria o PIX com o token da ONG, polling da order, aprovação atômica
+│   ├── DonationReconciliationJob.java      # A cada minuto confere no Mercado Pago os PIX pendentes (janela fechada)
 │   ├── entity/                             # Donation + DonationStatus
 │   └── dto/                                # DonationResponseDTO, DonationPixDTO, DonationCampaignDTO...
 ├── payment/                                # Conta Mercado Pago de cada ONG (OAuth)
 │   ├── MercadoPagoController.java          # Conectar, consultar, desconectar e a volta do OAuth
 │   ├── MercadoPagoOAuthService.java        # Vínculo, renovação do token e desconexão
-│   ├── MercadoPagoClient.java              # Chamadas ao Mercado Pago (tokens e orders)
+│   ├── MercadoPagoClient.java              # Chamadas ao Mercado Pago (tokens e orders PIX)
 │   ├── MercadoPagoTokenRefreshJob.java     # Renova todo dia as contas que vencem logo
 │   ├── OAuthStateService.java              # O state assinado do OAuth
 │   ├── TokenCryptoConverter.java           # Tokens criptografados no banco (AES-256-GCM)
-│   ├── MercadoPagoWebhookController.java / MercadoPagoWebhookService.java  # Sem @RestController: a rota está em donation/ enquanto o PIX usa o token provisório
+│   ├── MercadoPagoWebhookController.java / MercadoPagoWebhookService.java  # POST /api/webhooks/mercadopago: confere a order e aprova
+│   ├── MercadoPagoSignatureVerifier.java   # Assinatura x-signature do webhook
 │   └── dto/                                # MercadoPagoAccountDTO, ConnectResponseDTO
 ├── match/                                  # AUmatch: quiz da pessoa e deck por compatibilidade
 │   ├── MatchController.java
@@ -290,27 +290,36 @@ Depois de trazer as mudanças do Git, faça **Build → Rebuild Project** no Int
 | `FRONTEND_URL`        | Para onde a API volta depois do login Google e do OAuth do Mercado Pago; base do link de senha | `http://localhost:5173` |
 | `MAIL_USERNAME`       | Conta do Gmail que envia os e-mails de senha | — (sem ela, o e-mail só vai para o log) |
 | `MAIL_PASSWORD`       | Senha de app dessa conta                     | — |
-| `MP_DEV_ACCESS_TOKEN` | Token de teste do Mercado Pago, usado por todas as ONGs (provisório, até as doações usarem a conta de cada ONG) | — |
-| `MP_SANDBOX`          | `true`: o pagador do PIX vai como `APRO` (o sandbox aprova sozinho) | `true` |
-| `MP_WEBHOOK_SECRET`   | Assinatura secreta dos webhooks do Mercado Pago | — (sem ela, todo webhook vira 401) |
+| `MP_SANDBOX`          | `true` só com contas de teste: o pagador do PIX vai como `APRO`. Com uma conta real conectada, deixe `false` (a cobrança continua real, em nome de um pagador falso) | `false` |
+| `MP_WEBHOOK_SECRET`   | Assinatura secreta dos webhooks, do modo **Produção** (Configuração de webhooks). Copie depois do último Salvar, que pode trocá-la | — (sem ela, todo webhook responde 503) |
+| `DONATION_RECONCILE_DELAY_MS` | Intervalo da consulta periódica dos PIX pendentes | `60000` (1 min) |
 | `MP_BASE_URL`         | Endereço da API do Mercado Pago              | `https://api.mercadopago.com` |
 | `MP_CLIENT_ID`        | Aplicação do AUcolher no Mercado Pago (conexão das ONGs) | — (sem as credenciais desta parte, conectar responde 503) |
 | `MP_CLIENT_SECRET`    | Segredo dessa aplicação                      | — |
 | `MP_REDIRECT_URI`     | Idêntica à cadastrada na aplicação; termina em `/api/mercado-pago/oauth/callback` | — |
 | `MP_TOKEN_ENCRYPTION_KEY` | Criptografa os tokens no banco: `openssl rand -base64 32` | — |
 | `MP_STATE_SECRET`     | Assina o `state` do OAuth                    | o valor de `JWT_SECRET` |
-| `MP_TEST_TOKEN`       | `true` com as credenciais de teste           | `false` |
+| `MP_TEST_TOKEN`       | Deixe `false`: com `true` o Mercado Pago entrega um token `TEST-`, que a criação do PIX recusa (401) | `false` |
 
 Sem `JWT_SECRET`, a API sobe gerando uma chave aleatória por execução (registra um WARN no log): dá para desenvolver, mas todo restart invalida os tokens já emitidos. Defina a variável em qualquer ambiente que não seja a sua máquina.
 
 **Conta admin.** Não existe cadastro público de admin, e a API não cria a conta ao subir. A conta `ADMIN` é inserida direto no banco (usuário com `user_type = 'ADMIN'`).
 
-**Mercado Pago (provisório).** O contrato manda cada ONG conectar a própria conta do Mercado Pago pelo OAuth (migração 009, `api-mercado-pago-ongs.md`). As rotas da conexão existem (`payment/`), mas ainda não foram testadas com credenciais reais e as doações ainda não usam essa conta: a `PlaceholderMercadoPagoAccountGateway` trata toda ONG como conectada e usa um único `MP_DEV_ACCESS_TOKEN`. Sem ele, as campanhas funcionam normalmente, mas doar responde 400 "Esta ONG não está recebendo doações no momento.".
+**Mercado Pago.** Cada ONG conecta a própria conta do Mercado Pago pelo OAuth (painel → Campanhas → Conectar; migração 009, `api-mercado-pago-ongs.md`). O PIX de cada doação é criado com o token da ONG e o dinheiro cai direto na conta dela; a plataforma não cobra comissão. Sem conta conectada, a ONG não cria campanha e doar responde 400 "Esta ONG não está recebendo doações no momento.". A doação é aprovada por três caminhos, todos consultando a order no Mercado Pago: o polling da janela do PIX (`GET /donations/{id}`), o webhook e a consulta periódica de 1 em 1 minuto (`DonationReconciliationJob`), que cobre quem fecha a janela antes de pagar. Testado com PIX real em 15 e 16/11/2026.
 
-Falta, para as doações usarem a conta de cada ONG:
-- fazer o `MercadoPagoOAuthService` implementar `MercadoPagoAccountGateway` e apagar o Placeholder;
-- trocar o webhook de `donation/` pelo de `payment/`, hoje sem `@RestController` (os dois juntos impedem a API de subir);
-- conferir no sandbox os campos da Orders API em `MercadoPagoClient` (§6 do contrato).
+Para rodar com o Mercado Pago na sua máquina:
+- **Túnel:** o Mercado Pago precisa alcançar a API. Com o ngrok 3.39: `ngrok http --domain=<seu domínio fixo>.ngrok-free.dev 8080` (o `--url` não existe nessa versão).
+- **Aplicação no Mercado Pago** (Suas integrações): URL de retorno `https://<túnel>/api/mercado-pago/oauth/callback`, igual ao `MP_REDIRECT_URI`; em Configuração de webhooks, modo **Produção**, a URL `https://<túnel>/api/webhooks/mercadopago` com o evento **Order (Mercado Pago)**.
+- **Conta da ONG:** precisa ter **chave Pix** cadastrada. Uma conta do Mercado Pago só fica ligada a uma ONG.
+- **Doador:** e-mail diferente do da conta que recebe.
+
+Erros já vistos e a causa:
+- `401` ao criar o PIX: `MP_TEST_TOKEN=true` gerou um token `TEST-`. Use `false` e reconecte a conta.
+- `402 invalid_users_involved`: pagador de teste (`MP_SANDBOX=true`) com uma conta real.
+- `402 processing_error`: a conta da ONG não tem chave Pix.
+- Webhook `401`: segredo diferente do mostrado no modo Produção depois do último Salvar. O "Simular notificação" do painel recebe 401 mesmo com o segredo certo: valide com uma notificação real (criar uma doação já gera uma).
+
+A "credencial de teste" da aplicação também gera PIX **real**: não há sandbox de PIX para este fluxo. Os detalhes estão em `api-mercado-pago-ongs.md` §5.1 a §5.3, no repositório do front.
 
 **E-mail.** Sem `MAIL_USERNAME`, a recuperação de senha funciona, mas o e-mail, com o link, só vai para o log da API. Para enviar de verdade, use uma conta do Gmail com uma senha de app.
 
@@ -983,4 +992,4 @@ A resposta traz também `complete`: `true` quando as 7 perguntas têm resposta.
 - **Vagas de evento sem corrida**: confirmar presença, editar e excluir leem o evento com `SELECT ... FOR UPDATE`, então dois cliques ao mesmo tempo não passam da capacidade.
 - **Evento com confirmados não some**: excluir um evento que já tem presenças só muda o status para `CANCELLED`, e quem confirmou continua vendo o evento em `/api/events/attending`.
 - **Exclusão de conta é anonimização**: a linha de `users` fica, porque pedidos, avaliações e doações das outras pessoas apontam para ela. Como o `ON DELETE CASCADE` não dispara, `AccountDeletionService` apaga também os links de senha, as marcas de leitura do chat e a conta Mercado Pago. As mensagens do chat ficam, para a outra parte manter o histórico.
-- **Ainda fora da API**: as doações na conta de cada ONG. A conexão existe, mas o PIX segue no token provisório.
+- **Doação na conta da ONG, confirmada por três caminhos**: o PIX sai com o token da conta Mercado Pago da ONG, e a aprovação (atômica) vem da janela do PIX, do webhook ou da consulta periódica de 1 em 1 minuto. Todos consultam a order no Mercado Pago, então um aviso falso não aprova nada.

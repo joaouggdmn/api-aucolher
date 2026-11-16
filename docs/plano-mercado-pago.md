@@ -4,6 +4,8 @@
 >
 > Contrato: `docs/entrega-final/api-mercado-pago-ongs.md` e `api-campanhas-doacoes.md`, também no front. Se este plano e o contrato divergirem, o contrato vale, exceto nos pontos que este plano manda atualizar.
 
+> **Situação em 16/11/2026: concluído.** M0, B1, B2, Gate B, F1 a F3 (front, PR #44), B3, T3 e D1 feitos. A Apacri está conectada à conta real do João; o PIX real de R$ 5 foi pago e aprovado com a janela aberta (polling, doações 12 e 13) e com a janela fechada (webhook, doação 15). O Gate A deixou de fazer sentido quando B1 e B2 entraram no `main` antes da hora. Não existe sandbox de PIX para este fluxo: até a "credencial de teste" da aplicação gera cobrança real (seção 8). As seções 2 a 7 descrevem o ponto de partida, em 04/11.
+
 ## 1. Objetivo e decisões
 
 O dinheiro das doações deve cair direto na conta Mercado Pago de cada ONG (regras §10.3 e texto do TCC). Hoje isso ainda não acontece.
@@ -153,6 +155,8 @@ Branch `feature/mercado-pago-ongs`, a partir do `main`. Cada bloco compila e pas
 
 ### B3. Consulta periódica (opcional)
 
+> **Feito em 16/11/2026** (`DonationReconciliationJob`, de 1 em 1 minuto, até 10 minutos depois do vencimento). Mantido mesmo com o webhook funcionando, como reserva: o segredo do webhook muda a cada Salvar no painel, e a API pode estar fora do ar quando o Mercado Pago avisa.
+
 **Só é obrigatório se o webhook não chegar no Gate B.** Sem ele e sem webhook, doação paga com a janela fechada aparece como expirada.
 
 - `@Scheduled` a cada poucos minutos, consultando as orders de doações `PENDING`, inclusive as que acabaram de vencer.
@@ -201,36 +205,39 @@ Sem tela no front, a conexão é feita pela rota da API:
 
 ### Registro dos resultados
 
-Preencher durante os testes, sem colar tokens.
+Preenchido nos testes de 15 e 16/11/2026, com a conta real do João conectada como ONG (Apacri).
 
 | Item | Resultado |
 |---|---|
-| Valor de `MP_TEST_TOKEN` que funcionou | |
-| Prefixo do token (`TEST-` ou `APP_USR-`) | |
-| Status final depois do `APRO` | |
-| `expiration_time` aceito? | |
-| `type` recebido no webhook | |
-| Webhook chega para order do token OAuth? | |
-| `localhost` aceito como retorno? | |
-| Chave Pix exigida na conta de teste? | |
-| Aplicação exige revisão para produção? | |
+| Valor de `MP_TEST_TOKEN` que funcionou | `false`. Com `true` vem um token `TEST-`, e o `POST /v1/orders` responde 401 |
+| Prefixo do token (`TEST-` ou `APP_USR-`) | `APP_USR-` |
+| Status final depois do `APRO` | Não se aplica: com a conta real, o pagador de teste dá 402 `invalid_users_involved`, e até a "credencial de teste" da aplicação gera PIX real (a order fica aguardando um pagamento de verdade). Não há sandbox de PIX para este fluxo |
+| `expiration_time` aceito? | Sim, `PT30M` |
+| `type` recebido no webhook | `order`, com `?data.external_reference=donation-{id}&data.id=...&type=order`; `action` `order.action_required` na criação e `order.processed` no pagamento |
+| Webhook chega para order do token OAuth? | Sim, na URL do modo **Produção**. A assinatura confere com o segredo de Produção copiado depois do último Salvar; o "Simular notificação" do painel recebe 401 mesmo assim |
+| `localhost` aceito como retorno? | Não testado: usamos o túnel (ngrok com domínio fixo), e a API redireciona para `FRONTEND_URL` |
+| Chave Pix exigida na conta de teste? | Sim, na conta que recebe: sem ela, 402 `processing_error` |
+| Aplicação exige revisão para produção? | Não. Ativar as credenciais de produção só pediu setor de atuação e site |
 
 ## 9. T2: ponta a ponta em sandbox
 
 **Testes automáticos:** `mvn test` em um `git worktree` no scratchpad, para não atrapalhar a API na porta 8080, e E2E HTTP em banco temporário (`MP_BASE_URL` permite usar um servidor falso).
 
-**No navegador, com o Mercado Pago de teste:**
+**Feito com dinheiro real, não em sandbox** (ver "Registro dos resultados"). Testes automáticos: 435 verdes em 16/11.
 
-- [ ] Conectar a conta da ONG; negar a autorização (`denied`); tentar a mesma conta em outra ONG (`already_linked`).
-- [ ] ONG sem conta tentando criar campanha (400).
-- [ ] Criar campanha e doar: a janela mostra o QR e confirma sozinha; o total sobe uma vez só.
-- [ ] Webhook com assinatura válida aprova; com assinatura errada responde 401.
-- [ ] Fechar a janela antes do pagamento: a doação ainda é confirmada.
-- [ ] Desconectar com PIX pendente (400) e sem PIX pendente (204): a campanha fica "Doações indisponíveis".
-- [ ] `NEEDS_RECONNECT`, forçado no banco: o painel avisa, doar responde 400 e reconectar resolve.
-- [ ] Encerrar campanha com PIX pendente, excluir conta da ONG e admin tentando doar continuam funcionando.
+- [x] Conectar a conta da ONG pelo painel (cartão verde, `?mp=connected`).
+- [ ] Negar a autorização (`denied`); tentar a mesma conta em outra ONG (`already_linked`). **Não testado.**
+- [ ] ONG sem conta tentando criar campanha (400). **Não testado no navegador.**
+- [x] Doar: a janela mostra o QR e confirma sozinha; o total sobe uma vez só (doações 12 e 13, R$ 5 cada).
+- [x] Webhook com assinatura válida aprova (doação 15, 200); sem assinatura ou com assinatura errada responde 401.
+- [x] Fechar a janela antes do pagamento: a doação ainda é confirmada (doação 15, pelo webhook; o B3 cobre em até 1 minuto se ele falhar).
+- [ ] Desconectar com PIX pendente (400) e sem PIX pendente (204). **Não testado.**
+- [x] `NEEDS_RECONNECT` aconteceu de verdade (401 com o token `TEST-`): doar respondeu 400 e o Reconectar do painel resolveu.
+- [ ] Encerrar campanha com PIX pendente, excluir conta da ONG e admin tentando doar. **Não testado depois destas mudanças.**
 
 ## 10. T3: Pix real de R$ 5
+
+> **Feito em 15/11/2026.** A conta dona da aplicação (a do João) autorizou a si mesma sem problema e ficou conectada à Apacri. Doação 12 (R$ 5) paga às 20:10 e aprovada 7 s depois; o crédito apareceu na conta. O `.env.aiven` ficou em `MP_SANDBOX=false`: não há sandbox para voltar, e a demonstração usa PIX real. O passo 7 abaixo não se aplica.
 
 **Quem paga é o João, no app do banco. Claude não executa pagamentos.** Só depois do T2.
 
@@ -243,6 +250,8 @@ Preencher durante os testes, sem colar tokens.
 7. **Limpe:** desconecte a conta (apaga os tokens), exclua a campanha e volte o `.env.aiven` para sandbox.
 
 ## 11. D1: fechamento e banca
+
+> **Feito em 16/11/2026.** Docs atualizados nos dois repositórios. O roteiro completo da banca está no front, em `docs/entrega-final/roteiro-banca-mercado-pago.md`. O vídeo de reserva fica com o João.
 
 **Docs a atualizar:**
 - no back: README (seção de variáveis e "Mercado Pago (provisório)");
