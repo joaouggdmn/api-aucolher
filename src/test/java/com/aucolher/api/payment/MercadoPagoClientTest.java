@@ -82,7 +82,7 @@ class MercadoPagoClientTest {
 
         JsonNode body = mapper.readTree(lastBody);
         assertEquals("APRO", body.path("payer").path("first_name").asText());
-        assertEquals("test@testuser.com", body.path("payer").path("email").asText());
+        assertEquals("test_payer@example.com", body.path("payer").path("email").asText());
         assertEquals("ORD123", order.orderId());
         assertEquals("00020126pix", order.qrCode());
         assertEquals("iVBOR", order.qrCodeBase64());
