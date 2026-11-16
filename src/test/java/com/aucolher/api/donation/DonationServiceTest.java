@@ -316,6 +316,72 @@ class DonationServiceTest {
         assertThat(dto.campaign().removedByModeration()).isTrue();
     }
 
+    // ===================== Consulta periódica (B3) =====================
+
+    @Test
+    void reconcileApprovesAPixPaidWithTheWindowClosed() {
+        when(donations.findById(259L)).thenReturn(Optional.of(donation(DonationStatus.PENDING, LocalDateTime.now().plusMinutes(20))));
+        when(accounts.accessToken(1L)).thenReturn("token-da-ong");
+        when(pix.getOrderState("token-da-ong", "ORD123")).thenReturn(OrderPaymentState.PAID);
+
+        service.reconcile(259L);
+
+        verify(donations).approve(eq(259L), any());
+    }
+
+    @Test
+    void reconcileStillApprovesAPixThatExpiredMomentsAgo() {
+        when(donations.findById(259L)).thenReturn(Optional.of(donation(DonationStatus.PENDING, LocalDateTime.now().minusMinutes(2))));
+        when(accounts.accessToken(1L)).thenReturn("token-da-ong");
+        when(pix.getOrderState("token-da-ong", "ORD123")).thenReturn(OrderPaymentState.PAID);
+
+        service.reconcile(259L);
+
+        verify(donations).approve(eq(259L), any());
+    }
+
+    @Test
+    void reconcileLeavesAWaitingPixPending() {
+        when(donations.findById(259L)).thenReturn(Optional.of(donation(DonationStatus.PENDING, LocalDateTime.now().plusMinutes(20))));
+        when(accounts.accessToken(1L)).thenReturn("token-da-ong");
+        when(pix.getOrderState("token-da-ong", "ORD123")).thenReturn(OrderPaymentState.WAITING);
+
+        service.reconcile(259L);
+
+        verify(donations, never()).approve(anyLong(), any());
+    }
+
+    @Test
+    void reconcileSkipsADonationThatIsNoLongerPending() {
+        when(donations.findById(259L)).thenReturn(Optional.of(donation(DonationStatus.APPROVED, LocalDateTime.now().plusMinutes(20))));
+
+        service.reconcile(259L);
+
+        verifyNoInteractions(pix);
+        verify(donations, never()).approve(anyLong(), any());
+    }
+
+    @Test
+    void reconcileLeavesMercadoPagoFailuresForTheNextRound() {
+        when(donations.findById(259L)).thenReturn(Optional.of(donation(DonationStatus.PENDING, LocalDateTime.now().plusMinutes(20))));
+        when(accounts.accessToken(1L)).thenReturn("token-da-ong");
+        when(pix.getOrderState("token-da-ong", "ORD123")).thenThrow(new MercadoPagoApiException(0, "rede"));
+
+        service.reconcile(259L);
+
+        verify(donations, never()).approve(anyLong(), any());
+        verify(accounts, never()).markNeedsReconnect(any());
+    }
+
+    @Test
+    void reconcileLooksAtPixThatExpiredUpToTenMinutesAgo() {
+        ArgumentCaptor<LocalDateTime> since = ArgumentCaptor.forClass(LocalDateTime.class);
+        when(donations.findIdsToReconcile(since.capture())).thenReturn(List.of(259L));
+
+        assertThat(service.pendingToReconcile()).containsExactly(259L);
+        assertThat(since.getValue()).isBetween(LocalDateTime.now().minusMinutes(11), LocalDateTime.now().minusMinutes(9));
+    }
+
     // ===================== Listas =====================
 
     @Test

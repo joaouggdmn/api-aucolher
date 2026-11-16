@@ -40,6 +40,15 @@ public interface DonationRepository extends JpaRepository<Donation, Long> {
             + "com.aucolher.api.donation.entity.DonationStatus.CANCELLED)")
     int approve(@Param("id") Long id, @Param("now") LocalDateTime now);
 
+    /**
+     * Consulta periódica (B3): ids dos PIX pendentes com order no Mercado Pago, inclusive os que
+     * venceram depois de `since` (quem paga no último minuto ainda é confirmado).
+     */
+    @Query("select d.id from Donation d "
+            + "where d.status = com.aucolher.api.donation.entity.DonationStatus.PENDING "
+            + "and d.mpOrderId is not null and d.expiresAt > :since order by d.id")
+    List<Long> findIdsToReconcile(@Param("since") LocalDateTime since);
+
     /** Números da Visão geral do admin (as APPROVED, inclusive de campanhas excluídas). */
     List<Donation> findByStatus(DonationStatus status);
 
