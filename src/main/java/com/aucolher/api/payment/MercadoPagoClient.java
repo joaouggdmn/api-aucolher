@@ -47,8 +47,12 @@ public class MercadoPagoClient {
     public record PixOrder(String orderId, String qrCode, String qrCodeBase64, String ticketUrl) {
     }
 
-    /** Pagador de teste do sandbox: "APRO" aprova o PIX sozinho. */
-    static final String SANDBOX_PAYER_EMAIL = "test@testuser.com";
+    /**
+     * Pagador de teste do PIX no sandbox, como no guia de testes do PIX das orders ("APRO").
+     * Só para contas de teste: com uma conta real conectada, o PIX é real e sai em nome deste
+     * pagador; test@testuser.com (do guia de cartões) ali é recusado com invalid_users_involved.
+     */
+    static final String SANDBOX_PAYER_EMAIL = "test_payer@example.com";
     static final String SANDBOX_PAYER_NAME = "APRO";
     /** O PIX vence junto com a doação (30 minutos). */
     static final String PIX_EXPIRATION = "PT30M";
@@ -208,17 +212,30 @@ public class MercadoPagoClient {
         return OrderPaymentState.UNKNOWN;
     }
 
-    /** Só os códigos de erro da resposta (ex.: [invalid_total_amount]): o corpo inteiro pode trazer dados do pagador. */
+    /**
+     * Só os códigos da resposta, sem o corpo inteiro (que pode trazer dados do pagador):
+     * o code de cada erro com os details dele e, quando a order chega a ser criada
+     * (402 failed), o status de cada pagamento. Ex.: [failed [pay_01...: rejected], payment failed/xxx]
+     */
     private String errorCodes(RestClientResponseException e) {
         try {
-            JsonNode errors = mapper.readTree(e.getResponseBodyAsString()).path("errors");
+            JsonNode root = mapper.readTree(e.getResponseBodyAsString());
             List<String> codes = new ArrayList<>();
-            errors.forEach(err -> {
+            root.path("errors").forEach(err -> {
                 String code = text(err.path("code"));
-                if (code != null) {
-                    codes.add(code);
+                if (code == null) {
+                    return;
                 }
+                List<String> details = new ArrayList<>();
+                err.path("details").forEach(d -> {
+                    if (d.isTextual()) {
+                        details.add(d.asText());
+                    }
+                });
+                codes.add(details.isEmpty() ? code : code + " " + details);
             });
+            root.path("data").path("transactions").path("payments").forEach(p ->
+                    codes.add("payment " + text(p.path("status")) + "/" + text(p.path("status_detail"))));
             return codes.toString();
         } catch (Exception ignored) {
             return "[]";
