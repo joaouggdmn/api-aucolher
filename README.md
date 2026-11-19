@@ -1,10 +1,18 @@
 # AUcolher API — Plataforma de Adoção de Animais
 
-API REST em Spring Boot 3 / Java 17 do AUcolher: cadastro, login e autenticação (tradicional + OAuth2 Google) de dois perfis de usuário, **ONG** e **Usuário Comum**, edição do perfil ("Minha conta"), anúncios de animais para adoção, favoritos, **eventos** das ONGs (com confirmação de presença), o **AUmatch** (quiz de estilo de vida e deck ordenado por compatibilidade) os **pedidos de adoção**, com avaliações depois da adoção concluída, o **retorno e o repasse** de uma adoção (a taxa de reabandono), as **denúncias** e o **painel do admin**, com estatísticas e moderação.
+API REST em Spring Boot 3 / Java 17 do AUcolher. Atende três perfis, **pessoa**, **ONG** e **admin**, com:
+- cadastro, login (e-mail e senha ou Google OAuth2), edição do perfil ("Minha conta"), recuperação e troca de senha por e-mail e exclusão da conta;
+- anúncios de animais para adoção e favoritos;
+- o **AUmatch**: quiz de estilo de vida e deck ordenado por compatibilidade;
+- os **pedidos de adoção**, com **chat** entre as partes e avaliações depois da adoção concluída;
+- o **retorno e o repasse** de uma adoção (a taxa de reabandono);
+- **eventos** das ONGs, com confirmação de presença;
+- **campanhas com doações por Pix**, criadas com a conta **Mercado Pago** de cada ONG, para o dinheiro cair direto nela;
+- as **denúncias** e o **painel do admin**, com estatísticas e moderação.
 
 ## Stack
 
-Java 17 · Spring Boot 3.3 · Spring Security · Spring Security OAuth2 Client · Spring Data JPA · PostgreSQL · Lombok · JJWT (tokens JWT)
+Java 17 · Spring Boot 3.3 · Spring Security · Spring Security OAuth2 Client · Spring Data JPA · Bean Validation · Spring Mail · PostgreSQL · Lombok · JJWT (tokens JWT) · Mercado Pago (OAuth e Orders API)
 
 ## Estrutura do projeto
 
@@ -339,7 +347,7 @@ A API sobe em `http://localhost:8080`.
 mvn test
 ```
 
-Os testes não precisam de banco: as regras de negócio são testadas com o repositório simulado (Mockito) e as rotas com MockMvc.
+Os testes não precisam de banco: as regras de negócio são testadas com o repositório simulado (Mockito) e as rotas com MockMvc. São 435 testes em 48 classes, todos passando (conferido em 16/11/2026).
 
 ## Endpoints
 
