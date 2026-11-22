@@ -119,4 +119,33 @@ class PasswordResetServiceTest {
         verify(tokens).invalidateOpen(eq(1L), any());
         verify(mail).sendPasswordChanged(eq("Ana"), eq("a@a.com"), any());
     }
+
+    @Test
+    void samePasswordIs400AndKeepsTheLink() {
+        PasswordResetToken t = new PasswordResetToken(1L, "h", LocalDateTime.now(), LocalDateTime.now().plusMinutes(5));
+        when(tokens.findByTokenHashAndUsedAtIsNullAndExpiresAtAfter(anyString(), any())).thenReturn(Optional.of(t));
+        when(users.findById(1L)).thenReturn(Optional.of(new UserRow(1, "Ana", "a@a.com", "velho", true)));
+        when(encoder.matches("senhaAtual", "velho")).thenReturn(true);
+
+        ApiException e = assertThrows(ApiException.class, () -> service.reset("tok", "senhaAtual"));
+
+        assertEquals("A nova senha deve ser diferente da atual.", e.getMessage());
+        verify(users, never()).updatePassword(anyLong(), anyString(), any());
+        verify(tokens, never()).invalidateOpen(anyLong(), any());
+        verify(mail, never()).sendPasswordChanged(anyString(), anyString(), any());
+    }
+
+    @Test
+    void googleOnlyAccountCanCreateItsFirstPassword() {
+        PasswordResetToken t = new PasswordResetToken(2L, "h", LocalDateTime.now(), LocalDateTime.now().plusMinutes(5));
+        when(tokens.findByTokenHashAndUsedAtIsNullAndExpiresAtAfter(anyString(), any())).thenReturn(Optional.of(t));
+        when(users.findById(2L)).thenReturn(Optional.of(new UserRow(2, "Gui", "g@g.com", null, true)));
+        when(encoder.encode("primeira1")).thenReturn("hash-primeira");
+        when(users.updatePassword(anyLong(), anyString(), any())).thenReturn(true);
+
+        service.reset("tok", "primeira1");
+
+        verify(encoder, never()).matches(any(), any());
+        verify(users).updatePassword(eq(2L), eq("hash-primeira"), any());
+    }
 }
