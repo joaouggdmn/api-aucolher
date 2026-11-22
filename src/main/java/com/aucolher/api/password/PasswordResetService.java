@@ -28,6 +28,7 @@ public class PasswordResetService {
 
     static final String INVALID_EMAIL = "Informe um e-mail válido.";
     static final String SHORT_PASSWORD = "A nova senha deve ter no mínimo 6 caracteres.";
+    static final String SAME_PASSWORD = "A nova senha deve ser diferente da atual.";
     static final String INVALID_LINK = "Este link é inválido ou expirou. Peça um novo.";
 
     private static final int MIN_PASSWORD = 6;
@@ -106,6 +107,11 @@ public class PasswordResetService {
             throw ApiException.badRequest(INVALID_LINK);
         }
         UserRow user = found.get();
+        // Conta só do Google (password nulo) está criando a primeira senha. Recusar
+        // aqui não consome o link: a pessoa tenta de novo com outra senha.
+        if (user.password() != null && encoder.matches(newPassword, user.password())) {
+            throw ApiException.badRequest(SAME_PASSWORD);
+        }
 
         LocalDateTime now = LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS);
         if (!users.updatePassword(user.id(), encoder.encode(newPassword), now)) {
