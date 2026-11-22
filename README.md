@@ -347,7 +347,7 @@ A API sobe em `http://localhost:8080`.
 mvn test
 ```
 
-Os testes não precisam de banco: as regras de negócio são testadas com o repositório simulado (Mockito) e as rotas com MockMvc. São 435 testes em 48 classes, todos passando (conferido em 16/11/2026).
+Os testes não precisam de banco: as regras de negócio são testadas com o repositório simulado (Mockito) e as rotas com MockMvc. São 437 testes em 48 classes, todos passando (conferido em 22/11/2026).
 
 ## Endpoints
 
@@ -558,7 +558,7 @@ Contrato completo em `docs/entrega-final/api-senha.md`, no frontend. As três ro
 |---|---|
 | `POST /api/auth/password/forgot` | `{ "email": "..." }`: envia o link. Responde igual exista a conta ou não; 400 só com e-mail mal formado |
 | `POST /api/auth/password/reset/check` | `{ "token": "..." }`: confere o link ao abrir a página. 400 se inválido, vencido ou já usado |
-| `POST /api/auth/password/reset` | `{ "token": "...", "newPassword": "..." }`: troca a senha, com no mínimo 6 caracteres |
+| `POST /api/auth/password/reset` | `{ "token": "...", "newPassword": "..." }`: troca a senha, com no mínimo 6 caracteres e diferente da atual (se for igual, responde 400 e o link continua valendo) |
 
 O link vale 30 minutos e só pode ser usado uma vez. Pedir outro invalida o anterior, com limite de um e-mail por minuto por conta. O banco guarda só o hash (SHA-256) do token. Redefinir grava `users.password_changed_at`, e os tokens JWT emitidos antes disso passam a responder 401. "Alterar senha", em Minha conta, usa o mesmo link. Conta do Google sem senha cria uma assim e entra pelos dois caminhos; o `provider` continua `GOOGLE`. O objeto `user` traz `hasPassword`, para o frontend escolher entre "Alterar senha" e "Criar senha".
 
