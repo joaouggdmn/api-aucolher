@@ -6,6 +6,8 @@
 
 > **Situação em 16/11/2026: concluído.** M0, B1, B2, Gate B, F1 a F3 (front, PR #44), B3, T3 e D1 feitos. A Apacri está conectada à conta real do João; o PIX real de R$ 5 foi pago e aprovado com a janela aberta (polling, doações 12 e 13) e com a janela fechada (webhook, doação 15). O Gate A deixou de fazer sentido quando B1 e B2 entraram no `main` antes da hora. Não existe sandbox de PIX para este fluxo: até a "credencial de teste" da aplicação gera cobrança real (seção 8). As seções 2 a 7 descrevem o ponto de partida, em 04/11.
 
+> **Nota de 23/11/2026:** o projeto deixou de usar o banco do Aiven. Onde este plano fala em `.env.aiven` e `.\run-aiven.ps1`, hoje vale o `.env` da pasta do backend, que a API lê sozinha, e o Run do IntelliJ. O banco é o `aucolher_db` local.
+
 ## 1. Objetivo e decisões
 
 O dinheiro das doações deve cair direto na conta Mercado Pago de cada ONG (regras §10.3 e texto do TCC). Hoje isso ainda não acontece.
