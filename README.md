@@ -293,7 +293,7 @@ Copy-Item .env.example .env
 notepad .env
 ```
 
-Cada linha é `NOME=valor`, sem aspas. Uma variável de ambiente de verdade, como as da run configuration do IntelliJ ou as do `run-aiven.ps1`, vence o valor do `.env`. O banco não precisa de linha nenhuma: sem `DB_URL`, a API usa o `aucolher_db` local.
+Cada linha é `NOME=valor`, sem aspas. Uma variável de ambiente de verdade, como as da run configuration do IntelliJ, vence o valor do `.env`. O banco não precisa de linha nenhuma: sem `DB_URL`, a API usa o `aucolher_db` local.
 
 | Variável              | Descrição                                   | Padrão (dev)          |
 |-----------------------|----------------------------------------------|------------------------|
@@ -351,7 +351,7 @@ Pelo botão **Run** do IntelliJ, ou pelo terminal:
 mvn spring-boot:run
 ```
 
-A API sobe em `http://localhost:8080`, com o banco local e os segredos do `.env`. Para usar o banco do Aiven, suba pelo `.\run-aiven.ps1` (veja `docs/guia-banco-aiven.md`).
+A API sobe em `http://localhost:8080`, com o banco local e os segredos do `.env`.
 
 ### 4. Testes
 
