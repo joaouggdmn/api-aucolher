@@ -1,5 +1,10 @@
 # Guia — usar o banco do Aiven (casa e escola)
 
+> **Desde 23/11/2026 o padrão é o banco local.** Os dados do Aiven foram copiados para o
+> `aucolher_db` local, e a API sobe pelo Run do IntelliJ com os segredos do `.env` (veja o
+> README, "Variáveis de ambiente"). O Aiven ficou como cópia de segurança desse dia: o que for
+> cadastrado no banco local não aparece nele. Este guia só vale se você voltar a usar o Aiven.
+
 O banco PostgreSQL do AUcolher está na nuvem (Aiven). Assim o computador de casa e o da
 escola usam **o mesmo banco**, sem copiar dump nem rodar migrations de novo.
 
@@ -79,7 +84,8 @@ Em *Run → Edit Configurations → sua configuração do Spring Boot → Enviro
 ```
 DB_URL=jdbc:postgresql://pg-ac96582-jpuggdn-2f5b.i.aivencloud.com:20175/defaultdb?sslmode=require;DB_USERNAME=avnadmin;DB_PASSWORD=SUA_SENHA
 ```
-Aqui as variáveis são separadas por `;`.
+Aqui as variáveis são separadas por `;`. Enquanto essas três variáveis estiverem lá, o Run do
+IntelliJ vai para o Aiven. Apague-as para voltar ao banco local.
 
 ## No dia a dia
 
@@ -95,7 +101,8 @@ Aqui as variáveis são separadas por `;`.
   (DBeaver, pgAdmin) com os mesmos dados de conexão.
 - **Teste que apaga ou recria dados?** Não rode contra o Aiven. Crie um banco temporário no
   Postgres local e aponte a API para ele (`--spring.datasource.url=...`).
-- **Quer voltar ao banco local?** Suba a API sem o script, do jeito antigo.
+- **Quer voltar ao banco local?** Suba a API sem o script, pelo Run do IntelliJ ou por
+  `mvn spring-boot:run`. Os segredos vêm do `.env`.
 
 ## Se der erro
 

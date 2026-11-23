@@ -286,8 +286,18 @@ Depois de trazer as mudanças do Git, faça **Build → Rebuild Project** no Int
 
 ### 2. Variáveis de ambiente
 
+Os segredos ficam num arquivo `.env` na pasta do projeto, que o Git ignora. A API lê esse arquivo sozinha (`spring.config.import` no `application.properties`), então não precisa de script nem de variáveis na run configuration:
+
+```powershell
+Copy-Item .env.example .env
+notepad .env
+```
+
+Cada linha é `NOME=valor`, sem aspas. Uma variável de ambiente de verdade, como as da run configuration do IntelliJ ou as do `run-aiven.ps1`, vence o valor do `.env`. O banco não precisa de linha nenhuma: sem `DB_URL`, a API usa o `aucolher_db` local.
+
 | Variável              | Descrição                                   | Padrão (dev)          |
 |-----------------------|----------------------------------------------|------------------------|
+| `DB_URL`              | Endereço JDBC do PostgreSQL                  | `jdbc:postgresql://localhost:5432/aucolher_db` |
 | `DB_USERNAME`         | Usuário do PostgreSQL                        | `postgres`             |
 | `DB_PASSWORD`         | Senha do PostgreSQL                          | `1234`                  |
 | `GOOGLE_CLIENT_ID`    | Client ID do Google OAuth2                   | —                       |
@@ -335,11 +345,13 @@ Para o login Google funcionar, crie as credenciais em [Google Cloud Console](htt
 
 ### 3. Executar
 
+Pelo botão **Run** do IntelliJ, ou pelo terminal:
+
 ```bash
 mvn spring-boot:run
 ```
 
-A API sobe em `http://localhost:8080`.
+A API sobe em `http://localhost:8080`, com o banco local e os segredos do `.env`. Para usar o banco do Aiven, suba pelo `.\run-aiven.ps1` (veja `docs/guia-banco-aiven.md`).
 
 ### 4. Testes
 
