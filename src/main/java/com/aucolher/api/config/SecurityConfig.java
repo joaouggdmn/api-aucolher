@@ -80,6 +80,9 @@ public class SecurityConfig {
                 // Volta do OAuth do Mercado Pago: quem chega é o navegador da ONG, sem o nosso
                 // token. A segurança é o state assinado, conferido no OAuthStateService
                 .requestMatchers(HttpMethod.GET, "/api/mercado-pago/oauth/callback").permitAll()
+                // Assistente de suporte (balão do site): visitante também pergunta. O abuso é
+                // contido pelo limite de mensagens por conta ou IP (SupportRateLimiter, support/)
+                .requestMatchers(HttpMethod.POST, "/api/support/chat").permitAll()
                 // Conta Mercado Pago: só a ONG conecta, consulta e desconecta
                 .requestMatchers("/api/ngo/**").hasRole("NGO")
                 // Painel do admin: só a conta ADMIN (a autoridade ROLE_ADMIN vem do
