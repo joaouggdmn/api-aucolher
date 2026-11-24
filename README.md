@@ -297,8 +297,7 @@ Depois de trazer as mudanças do Git, faça **Build → Rebuild Project** no Int
 Os segredos ficam num arquivo `.env` na pasta do projeto, que o Git ignora. A API lê esse arquivo sozinha (`spring.config.import` no `application.properties`), então não precisa de script nem de variáveis na run configuration:
 
 ```powershell
-Copy-Item .env.example .env
-notepad .env
+notepad .env   # crie o arquivo com as variáveis da tabela abaixo
 ```
 
 Cada linha é `NOME=valor`, sem aspas. Uma variável de ambiente de verdade, como as da run configuration do IntelliJ, vence o valor do `.env`. O banco não precisa de linha nenhuma: sem `DB_URL`, a API usa o `aucolher_db` local.
