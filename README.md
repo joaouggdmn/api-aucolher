@@ -374,7 +374,7 @@ A API sobe em `http://localhost:8080`, com o banco local e os segredos do `.env`
 mvn test
 ```
 
-Os testes não precisam de banco: as regras de negócio são testadas com o repositório simulado (Mockito) e as rotas com MockMvc. São 461 testes em 52 classes, todos passando (conferido em 24/11/2026).
+Os testes não precisam de banco: as regras de negócio são testadas com o repositório simulado (Mockito) e as rotas com MockMvc. São 466 testes em 52 classes, todos passando (conferido em 23/11/2026).
 
 ## Endpoints
 
