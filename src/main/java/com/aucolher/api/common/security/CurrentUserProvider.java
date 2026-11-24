@@ -1,5 +1,7 @@
 package com.aucolher.api.common.security;
 
+import java.util.Optional;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -24,10 +26,23 @@ public class CurrentUserProvider {
 
     public long requireUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated() || auth instanceof AnonymousAuthenticationToken) {
+        if (!isLoggedIn(auth)) {
             throw new ApiException(HttpStatus.UNAUTHORIZED, "Sessão inválida. Entre novamente.");
         }
         return users.findIdByEmail(auth.getName())
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Sessão inválida. Entre novamente."));
+    }
+
+    /** Para rotas públicas: o id de quem está logado, ou vazio para visitante. */
+    public Optional<Long> optionalUserId() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (!isLoggedIn(auth)) {
+            return Optional.empty();
+        }
+        return users.findIdByEmail(auth.getName());
+    }
+
+    private static boolean isLoggedIn(Authentication auth) {
+        return auth != null && auth.isAuthenticated() && !(auth instanceof AnonymousAuthenticationToken);
     }
 }

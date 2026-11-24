@@ -104,6 +104,14 @@ src/main/java/com/aucolher/api/
 │   ├── ChatRequestLookup.java              # Lê do pedido quem são as partes e o status
 │   ├── ChatMessage.java / ChatRead.java    # + enums (MessageType, SystemEvent)
 │   └── dto/                                # ChatMessageDTO, ChatSummaryDTO, ConversationSummaryDTO, SendMessageDTO, MarkReadDTO
+├── support/                                # Assistente de suporte (balão do site), com o Google Gemini
+│   ├── SupportChatController.java          # POST /api/support/chat (público)
+│   ├── SupportChatService.java             # Valida, limita, monta a conversa e pergunta ao Gemini; não grava nada
+│   ├── GeminiClient.java                   # Chamada generateContent (chave no cabeçalho), novas tentativas e modelo reserva
+│   ├── SupportKnowledge.java               # Lê a instrução de sistema (resources/support/assistente-prompt.md)
+│   ├── SupportRateLimiter.java             # 10 mensagens por minuto e 60 por dia, por conta ou IP
+│   ├── GeminiProperties.java / SupportConfig.java  # app.gemini.*
+│   └── dto/                                # SupportChatRequestDTO, SupportMessageDTO, SupportReplyDTO
 ├── report/                                 # Denúncias de anúncios e perfis
 │   ├── ReportController.java               # POST /api/reports e /api/reports/mine
 │   ├── ReportService.java                  # Regras do envio, cópia do alvo e resolução dos casos
@@ -116,7 +124,7 @@ src/main/java/com/aucolher/api/
 │   ├── AdminStatsService.java              # Visão geral, com a taxa de reabandono
 │   ├── ModerationService.java              # Banir, reativar, remover anúncio/evento, arquivar denúncia
 │   └── dto/                                # AdminStatsDTO, AdminUserDTO, AdminAnimalDTO, ListingStatus...
-├── common/                                 # Usado por payment/, password/ e chat/
+├── common/                                 # Usado por payment/, password/, chat/ e support/
 │   ├── ApiException.java / ApiExceptionHandler.java  # Erro no formato { status, error, message }
 │   ├── UserDirectory.java / DonationGateway.java     # Consultas mínimas a users e donations
 │   └── security/CurrentUserProvider.java   # O id da conta logada
@@ -289,8 +297,7 @@ Depois de trazer as mudanças do Git, faça **Build → Rebuild Project** no Int
 Os segredos ficam num arquivo `.env` na pasta do projeto, que o Git ignora. A API lê esse arquivo sozinha (`spring.config.import` no `application.properties`), então não precisa de script nem de variáveis na run configuration:
 
 ```powershell
-Copy-Item .env.example .env
-notepad .env
+notepad .env   # crie o arquivo com as variáveis da tabela abaixo
 ```
 
 Cada linha é `NOME=valor`, sem aspas. Uma variável de ambiente de verdade, como as da run configuration do IntelliJ, vence o valor do `.env`. O banco não precisa de linha nenhuma: sem `DB_URL`, a API usa o `aucolher_db` local.
@@ -318,6 +325,11 @@ Cada linha é `NOME=valor`, sem aspas. Uma variável de ambiente de verdade, com
 | `MP_TOKEN_ENCRYPTION_KEY` | Criptografa os tokens no banco: `openssl rand -base64 32` | — |
 | `MP_STATE_SECRET`     | Assina o `state` do OAuth                    | o valor de `JWT_SECRET` |
 | `MP_TEST_TOKEN`       | Deixe `false`: com `true` o Mercado Pago entrega um token `TEST-`, que a criação do PIX recusa (401) | `false` |
+| `GEMINI_API_KEY`      | Chave do Google AI Studio para o assistente de suporte | — (sem ela, o assistente responde 503) |
+| `GEMINI_MODEL`        | Modelo do Gemini (o leve responde em 1 a 2 s) | `gemini-3.5-flash-lite` |
+| `GEMINI_FALLBACK_MODEL` | Modelo reserva, usado quando o principal está sobrecarregado (503), no limite (429) ou sem resposta a tempo; vazio = sem reserva | `gemini-3.6-flash` |
+| `GEMINI_THINKING_LEVEL` | Raciocínio do modelo (`MINIMAL`, `LOW`, `MEDIUM`, `HIGH`); os tokens dele contam como saída e deixam a resposta lenta | `MINIMAL` |
+| `GEMINI_MAX_OUTPUT_TOKENS` | Limite de tokens da resposta, raciocínio incluído | `1024` |
 
 Sem `JWT_SECRET`, a API sobe gerando uma chave aleatória por execução (registra um WARN no log): dá para desenvolver, mas todo restart invalida os tokens já emitidos. Defina a variável em qualquer ambiente que não seja a sua máquina.
 
@@ -341,6 +353,8 @@ A "credencial de teste" da aplicação também gera PIX **real**: não há sandb
 
 **E-mail.** Sem `MAIL_USERNAME`, a recuperação de senha funciona, mas o e-mail, com o link, só vai para o log da API. Para enviar de verdade, use uma conta do Gmail com uma senha de app.
 
+**Assistente de suporte.** Crie a chave em [Google AI Studio](https://aistudio.google.com) e coloque em `GEMINI_API_KEY`. No plano gratuito, o Google pode usar as perguntas e respostas para melhorar os produtos (termos da Gemini API), por isso o balão avisa para não enviar dados pessoais e a API não manda nenhum dado da conta ao Gemini.
+
 Para o login Google funcionar, crie as credenciais em [Google Cloud Console](https://console.cloud.google.com/apis/credentials) com **Authorized redirect URI**: `http://localhost:8080/login/oauth2/code/google`.
 
 ### 3. Executar
@@ -359,7 +373,7 @@ A API sobe em `http://localhost:8080`, com o banco local e os segredos do `.env`
 mvn test
 ```
 
-Os testes não precisam de banco: as regras de negócio são testadas com o repositório simulado (Mockito) e as rotas com MockMvc. São 437 testes em 48 classes, todos passando (conferido em 22/11/2026).
+Os testes não precisam de banco: as regras de negócio são testadas com o repositório simulado (Mockito) e as rotas com MockMvc. São 466 testes em 52 classes, todos passando (conferido em 23/11/2026).
 
 ## Endpoints
 
@@ -837,6 +851,20 @@ Contrato completo em `docs/entrega-final/api-chat.md`, no frontend. O id da conv
 | `PUT /api/chats/{requestId}/read` | `{ "lastMessageId": 12 }` — 204. A marca de leitura nunca volta |
 
 A conversa existe a partir do aceite e continua visível depois de concluída, devolvida, republicada ou cancelada. Pedido que nunca foi aceito responde 404. Cada troca de status grava um aviso `SYSTEM` na mesma transação, e o frontend monta a frase: `DELIVERY_REQUESTED`, `DELIVERY_DECLINED`, `ADOPTION_CONCLUDED`, `ADOPTER_WITHDREW`, `OWNER_WITHDREW`, `ANIMAL_RETURNED` e `ANIMAL_REHOMED`. Cancelamentos em lote (animal adotado ou tirado do ar, moderação) não geram aviso.
+
+### Assistente de suporte
+
+Contrato completo em `docs/entrega-final/api-assistente.md`, no frontend. É o balão do site: responde dúvidas sobre o uso do AUcolher com o Google Gemini. Rota pública, sem tabela no banco.
+
+| Método e rota | O que faz |
+|---|---|
+| `POST /api/support/chat` | `{ "message": "...", "history": [{ "role": "user" \| "model", "text": "..." }] }` → `{ "reply": "..." }` |
+
+- A pergunta tem de 1 a 500 caracteres. O histórico fica no navegador e vai junto; a API usa só as últimas 20 falas.
+- A instrução de sistema (`src/main/resources/support/assistente-prompt.md`) limita o assistente ao AUcolher: ele não inventa regra, não pede dados pessoais e não faz nada pelo usuário.
+- Limite de 10 mensagens por minuto e 60 por dia, por conta logada ou, para visitante, por IP: depois disso, 429.
+- Quando o Google responde 503 ("high demand"), 429 ou não responde em 20 s, a API tenta de novo o modelo principal e depois o reserva (`GEMINI_FALLBACK_MODEL`). Erro de configuração (400, 401, 403, 404) não é repetido.
+- Sem `GEMINI_API_KEY`, ou com o Gemini fora do ar mesmo depois das tentativas, 503 "O assistente está indisponível no momento. Tente de novo mais tarde.".
 
 ### Denúncias
 
