@@ -155,7 +155,7 @@ src/test/java/...                           # Testes (JUnit 5 + Mockito + MockMv
 psql -U postgres -h localhost -f sql/schema.sql
 ```
 
-O script cria o banco `aucolher_db` (se ainda não existir) e as tabelas `users`, `ngo_team`, `ngo_visiting_hours`, `animals`, `animal_photos`, `favorites`, `match_profiles`, `adoption_requests`, `adoption_reviews`, `events`, `event_attendances`, `reports`, `campaigns` e `donations`. Todas usam `IF NOT EXISTS`, então rodar o script de novo não apaga nada. É uma cópia de `docs/script_banco_aucolher.sql` do frontend — mantenha os dois iguais. Rode o script antes de subir a API: o Hibernate (`ddl-auto=validate`) não cria o banco nem as tabelas, só confere se elas batem com as entidades.
+O script cria o banco `aucolher_db` (se ainda não existir) e as tabelas `users`, `ngo_team`, `ngo_visiting_hours`, `animals`, `animal_photos`, `favorites`, `match_profiles`, `adoption_requests`, `adoption_reviews`, `events`, `event_attendances`, `reports`, `campaigns` e `donations`. Todas usam `IF NOT EXISTS`, então rodar o script de novo não apaga nada. Rode o script antes de subir a API: o Hibernate (`ddl-auto=validate`) não cria o banco nem as tabelas, só confere se elas batem com as entidades.
 
 #### Banco criado antes da padronização em inglês
 
@@ -335,7 +335,7 @@ Sem `JWT_SECRET`, a API sobe gerando uma chave aleatória por execução (regist
 
 **Conta admin.** Não existe cadastro público de admin, e a API não cria a conta ao subir. A conta `ADMIN` é inserida direto no banco (usuário com `user_type = 'ADMIN'`).
 
-**Mercado Pago.** Cada ONG conecta a própria conta do Mercado Pago pelo OAuth (painel → Campanhas → Conectar; migração 009, `api-mercado-pago-ongs.md`). O PIX de cada doação é criado com o token da ONG e o dinheiro cai direto na conta dela; a plataforma não cobra comissão. Sem conta conectada, a ONG não cria campanha e doar responde 400 "Esta ONG não está recebendo doações no momento.". A doação é aprovada por três caminhos, todos consultando a order no Mercado Pago: o polling da janela do PIX (`GET /donations/{id}`), o webhook e a consulta periódica de 1 em 1 minuto (`DonationReconciliationJob`), que cobre quem fecha a janela antes de pagar. Testado com PIX real em 15 e 16/11/2026.
+**Mercado Pago.** Cada ONG conecta a própria conta do Mercado Pago pelo OAuth (painel → Campanhas → Conectar; migração 009). O PIX de cada doação é criado com o token da ONG e o dinheiro cai direto na conta dela; a plataforma não cobra comissão. Sem conta conectada, a ONG não cria campanha e doar responde 400 "Esta ONG não está recebendo doações no momento.". A doação é aprovada por três caminhos, todos consultando a order no Mercado Pago: o polling da janela do PIX (`GET /donations/{id}`), o webhook e a consulta periódica de 1 em 1 minuto (`DonationReconciliationJob`), que cobre quem fecha a janela antes de pagar. Testado com PIX real em 15 e 16/11/2026.
 
 Para rodar com o Mercado Pago na sua máquina:
 - **Túnel:** o Mercado Pago precisa alcançar a API. Com o ngrok 3.39: `ngrok http --domain=<seu domínio fixo>.ngrok-free.dev 8080` (o `--url` não existe nessa versão).
@@ -349,7 +349,7 @@ Erros já vistos e a causa:
 - `402 processing_error`: a conta da ONG não tem chave Pix.
 - Webhook `401`: segredo diferente do mostrado no modo Produção depois do último Salvar. O "Simular notificação" do painel recebe 401 mesmo com o segredo certo: valide com uma notificação real (criar uma doação já gera uma).
 
-A "credencial de teste" da aplicação também gera PIX **real**: não há sandbox de PIX para este fluxo. Os detalhes estão em `api-mercado-pago-ongs.md` §5.1 a §5.3, no repositório do front.
+A "credencial de teste" da aplicação também gera PIX **real**: não há sandbox de PIX para este fluxo.
 
 **E-mail.** Sem `MAIL_USERNAME`, a recuperação de senha funciona, mas o e-mail, com o link, só vai para o log da API. Para enviar de verdade, use uma conta do Gmail com uma senha de app.
 
@@ -574,11 +574,11 @@ POST /api/auth/google/exchange
 - **400:** código vazio, desconhecido, já usado ou vencido, com "O login com o Google expirou. Tente novamente.";
 - **403:** conta suspensa.
 
-Fluxo completo e como criar as credenciais: `docs/entrega-final/api-login-google.md` no frontend.
+Como criar as credenciais: veja o fim da seção Variáveis de ambiente.
 
 ### Recuperar e alterar a senha
 
-Contrato completo em `docs/entrega-final/api-senha.md`, no frontend. As três rotas são públicas e respondem 204.
+As três rotas são públicas e respondem 204.
 
 | Método e rota | O que faz |
 |---|---|
@@ -698,8 +698,6 @@ Categorias: `ADOPTION_FAIR`, `HEALTH`, `BAZAAR`, `WORKSHOP`. A data não pode es
 
 ### Campanhas e doações
 
-Contrato completo em `docs/entrega-final/api-campanhas-doacoes.md`, no frontend.
-
 | Método e rota | Quem acessa | O que faz |
 |---|---|---|
 | `GET /api/campaigns?ngoId=&status=` | Público | `status` = `ACTIVE` (padrão) ou `CLOSED`; nunca devolve excluídas nem de ONG banida; `createdAt` decrescente |
@@ -718,8 +716,6 @@ Contrato completo em `docs/entrega-final/api-campanhas-doacoes.md`, no frontend.
 Categorias: `HEALTH`, `FOOD`, `INFRASTRUCTURE`, `NEUTERING`, `RESCUE` e `OTHER` (com o nome em `customCategory`). Valores em reais inteiros: meta de R$ 50 a R$ 1.000.000, doação de R$ 5 a R$ 100.000. A campanha com prazo vencido conta como `CLOSED` (calculado na leitura, sem job), e o PIX vence em 30 minutos (`EXPIRED`, também calculado). `raisedAmount` e `donationsCount` somam só as `APPROVED`, e a aprovação é um `UPDATE` atômico, para o webhook e o polling nunca contarem duas vezes.
 
 ### Conta Mercado Pago da ONG
-
-Contrato completo em `docs/entrega-final/api-mercado-pago-ongs.md`, no frontend. As doações ainda não usam esta conta (veja a seção de variáveis de ambiente).
 
 | Método e rota | Quem acessa | O que faz |
 |---|---|---|
@@ -841,7 +837,7 @@ Depois que o pedido é concluído, cada parte pode avaliar a outra uma vez: o ad
 
 ### Chat
 
-Contrato completo em `docs/entrega-final/api-chat.md`, no frontend. O id da conversa é o id do pedido. Só as duas partes do pedido acessam: quem não participa recebe 403, e o admin também.
+O id da conversa é o id do pedido. Só as duas partes do pedido acessam: quem não participa recebe 403, e o admin também.
 
 | Método e rota | O que faz |
 |---|---|
@@ -854,7 +850,7 @@ A conversa existe a partir do aceite e continua visível depois de concluída, d
 
 ### Assistente de suporte
 
-Contrato completo em `docs/entrega-final/api-assistente.md`, no frontend. É o balão do site: responde dúvidas sobre o uso do AUcolher com o Google Gemini. Rota pública, sem tabela no banco.
+É o balão do site: responde dúvidas sobre o uso do AUcolher com o Google Gemini. Rota pública, sem tabela no banco.
 
 | Método e rota | O que faz |
 |---|---|

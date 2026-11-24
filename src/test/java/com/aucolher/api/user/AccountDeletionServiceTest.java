@@ -37,7 +37,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.*;
 
-/** Excluir a própria conta (api-exclusao-conta.md), com o banco e os outros módulos simulados (Mockito). */
+/** Excluir a própria conta, com o banco e os outros módulos simulados (Mockito). */
 @ExtendWith(MockitoExtension.class)
 class AccountDeletionServiceTest {
 

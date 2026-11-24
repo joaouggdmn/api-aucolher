@@ -12,7 +12,7 @@ import java.util.List;
  * O campo `userType` define o perfil, e `provider` define a
  * origem da autenticação (cadastro tradicional ou OAuth2/Google).
  *
- * Campos de perfil seguem a seção 6 de docs/regras-de-negocio.md:
+ * Campos de perfil:
  * bio e foto valem para os dois perfis; CNPJ, redes sociais, equipe, horário de visitas e selo são do perfil de ONG.
  * O endereço é obrigatório para ONG e opcional para o usuário comum.
  */

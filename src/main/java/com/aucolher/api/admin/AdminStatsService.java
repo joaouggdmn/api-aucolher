@@ -239,7 +239,7 @@ public class AdminStatsService {
     }
 
     /**
-     * Taxa de reabandono (contrato do reabandono §4): todas as adoções que
+     * Taxa de reabandono: todas as adoções que
      * aconteceram, menos as de adotante ONG (resgate não é adoção final),
      * divididas pelo score congelado na conclusão.
      */

@@ -12,7 +12,7 @@ import javax.crypto.spec.SecretKeySpec;
 
 import org.junit.jupiter.api.Test;
 
-/** Assinatura do webhook do Mercado Pago (api-mercado-pago-ongs §5.2). */
+/** Assinatura do webhook do Mercado Pago. */
 class MercadoPagoSignatureVerifierTest {
 
     static final String SECRET = "segredo-do-webhook";

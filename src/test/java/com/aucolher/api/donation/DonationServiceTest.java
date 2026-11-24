@@ -41,7 +41,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 /**
- * Regras das doações (contrato api-campanhas-doacoes §4 a §6). O Mercado Pago
+ * Regras das doações. O Mercado Pago
  * fica simulado: aqui só se confere o que a API faz com a resposta dele.
  */
 @ExtendWith(MockitoExtension.class)

@@ -35,7 +35,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
-/** Regras das campanhas (contrato api-campanhas-doacoes §1 e §5), com o banco simulado (Mockito). */
+/** Regras das campanhas, com o banco simulado (Mockito). */
 @ExtendWith(MockitoExtension.class)
 class CampaignServiceTest {
 

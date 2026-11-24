@@ -53,7 +53,7 @@ public class AccountDeletionService {
     private final MercadoPagoAccountRepository mercadoPagoAccountRepository;
     private final ReportService reportService;
 
-    /** Tudo numa transação, na ordem do contrato (api-exclusao-conta.md §2). */
+    /** Tudo numa transação, na ordem do contrato. */
     @Transactional
     public void deleteAccount(String email, AccountDeletionDTO body) {
         User account = userRepository.findByEmail(email)

@@ -3,7 +3,7 @@
 -- Banco: aucolher_db
 --
 -- Execute com o psql, conectado ao banco padrão "postgres":
---   psql -U postgres -h localhost -f script_banco_aucolher.sql
+--   psql -U postgres -h localhost -f sql/schema.sql
 --
 -- \gexec e \c são comandos do psql. No pgAdmin: crie o banco
 -- aucolher_db pela interface, abra o Query Tool nele e rode a
@@ -23,9 +23,7 @@
 -- VisitingHour, Animal, Favorite, MatchProfile, AdoptionRequest,
 -- AdoptionReview, ChatMessage, ChatRead, Event, EventAttendance,
 -- Report, Campaign, Donation, MercadoPagoAccount,
--- PasswordResetToken) e a seção 6 de
--- docs/regras-de-negocio.md.
--- Cópia mantida no backend em sql/schema.sql.
+-- PasswordResetToken).
 -- ============================================================
 
 -- PostgreSQL não tem CREATE DATABASE IF NOT EXISTS: o SELECT só gera

@@ -141,7 +141,7 @@ public class AdoptionRequestService {
      * - adotante: AWAITING_DELIVERY → CONCLUDED; AWAITING_DELIVERY → ACCEPTED ("ainda não
      *   recebi"); qualquer ativo → CANCELLED (desistiu).
      * Repetir o status atual não muda nada (clique duplo).
-     * O aviso no chat entra na mesma transação da troca de status (api-chat.md §1).
+     * O aviso no chat entra na mesma transação da troca de status.
      */
     @Transactional
     public AdoptionRequestDTO changeStatus(Long id, String email, AdoptionStatus target) {

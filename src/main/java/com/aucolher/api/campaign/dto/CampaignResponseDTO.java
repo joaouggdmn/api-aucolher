@@ -9,8 +9,8 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
- * A campanha (contrato §2). `removed`, `removedByModeration` e `moderatedAt`
- * são do AdminCampaign (§7.1): nas rotas públicas a campanha excluída nem
+ * A campanha. `removed`, `removedByModeration` e `moderatedAt`
+ * são do AdminCampaign: nas rotas públicas a campanha excluída nem
  * aparece, então eles só fazem diferença no painel do admin.
  */
 public record CampaignResponseDTO(

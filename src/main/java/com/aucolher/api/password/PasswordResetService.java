@@ -22,7 +22,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import com.aucolher.api.password.PasswordUserStore.UserRow;
 import com.aucolher.api.common.ApiException;
 
-/** Recuperar e alterar senha (regra de negócio §2.1). */
+/** Recuperar e alterar senha. */
 @Service
 public class PasswordResetService {
 

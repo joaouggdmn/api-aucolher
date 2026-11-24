@@ -23,7 +23,7 @@ import com.aucolher.api.security.JwtService;
 import com.aucolher.api.security.OAuth2AuthenticationFailureHandler;
 import com.aucolher.api.security.OAuth2AuthenticationSuccessHandler;
 
-/** Webhook do Mercado Pago (contrato api-mercado-pago-ongs §5.2): rota pública, protegida pela assinatura. */
+/** Webhook do Mercado Pago: rota pública, protegida pela assinatura. */
 @WebMvcTest(MercadoPagoWebhookController.class)
 @Import(SecurityConfig.class)
 class MercadoPagoWebhookControllerTest {
