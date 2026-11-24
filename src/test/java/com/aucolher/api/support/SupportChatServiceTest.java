@@ -46,7 +46,8 @@ class SupportChatServiceTest {
     }
 
     private SupportChatService withKey(String apiKey) {
-        return new SupportChatService(gemini, new GeminiProperties(apiKey, null, null, null, null, null), knowledge, limiter);
+        return new SupportChatService(gemini,
+                new GeminiProperties(apiKey, "modelo-teste", "http://localhost", null, null, null), knowledge, limiter);
     }
 
     @SuppressWarnings("unchecked")
@@ -84,12 +85,17 @@ class SupportChatServiceTest {
     }
 
     @Test
-    void withoutApiKeyTheAssistantIsUnavailable() {
+    void withoutApiKeyOrModelTheAssistantIsUnavailable() {
         ApiException ex = assertThrows(ApiException.class,
                 () -> withKey(" ").chat("ip:1", "Como adotar?", null));
-
         assertEquals(HttpStatus.SERVICE_UNAVAILABLE, ex.getStatus());
         assertEquals(SupportChatService.UNAVAILABLE, ex.getMessage());
+
+        SupportChatService noModel = new SupportChatService(gemini,
+                new GeminiProperties("chave", " ", "http://localhost", null, null, null), knowledge, limiter);
+        assertEquals(HttpStatus.SERVICE_UNAVAILABLE,
+                assertThrows(ApiException.class, () -> noModel.chat("ip:1", "Como adotar?", null)).getStatus());
+
         verify(gemini, never()).generate(anyString(), anyList());
     }
 

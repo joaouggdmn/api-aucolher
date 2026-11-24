@@ -81,7 +81,11 @@ public class GeminiClient {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(10_000);
         factory.setReadTimeout(20_000);
-        this.rest = RestClient.builder().baseUrl(props.baseUrl()).requestFactory(factory).build();
+        RestClient.Builder builder = RestClient.builder().requestFactory(factory);
+        if (props.baseUrl() != null) {
+            builder.baseUrl(props.baseUrl());
+        }
+        this.rest = builder.build();
     }
 
     /**
@@ -117,11 +121,14 @@ public class GeminiClient {
                 lastModel = model;
             }
         }
-        throw last;
+        throw last != null ? last : new GeminiException(0);
     }
 
-    /** Modelo principal duas vezes e, se houver, o reserva. */
+    /** Modelo principal duas vezes e, se houver, o reserva. Sem modelo, nada (o serviço já responde 503). */
     List<String> attemptPlan() {
+        if (props.model() == null) {
+            return List.of();
+        }
         List<String> plan = new ArrayList<>(List.of(props.model(), props.model()));
         if (props.fallbackModel() != null) {
             plan.add(props.fallbackModel());
@@ -166,7 +173,9 @@ public class GeminiClient {
         body.put("contents", contents);
 
         Map<String, Object> generation = new LinkedHashMap<>();
-        generation.put("maxOutputTokens", props.maxOutputTokens());
+        if (props.maxOutputTokens() != null) {
+            generation.put("maxOutputTokens", props.maxOutputTokens());
+        }
         if (props.thinkingLevel() != null) {
             generation.put("thinkingConfig", Map.of("thinkingLevel", props.thinkingLevel()));
         }

@@ -122,10 +122,13 @@ class GeminiClientTest {
     }
 
     @Test
-    void withoutThinkingLevelTheModelDefaultIsKept() throws IOException {
+    void unsetThinkingLevelAndOutputLimitAreLeftOut() throws IOException {
         client(" ", null).generate("instrução", ONE_QUESTION);
-
         assertFalse(mapper.readTree(lastBody).at("/generationConfig").has("thinkingConfig"));
+
+        new GeminiClient(new GeminiProperties("chave-teste", "modelo-leve", baseUrl(), null, null, null), mapper,
+                pauses::add).generate("instrução", ONE_QUESTION);
+        assertFalse(mapper.readTree(lastBody).at("/generationConfig").has("maxOutputTokens"));
     }
 
     @Test
@@ -202,9 +205,15 @@ class GeminiClientTest {
     }
 
     @Test
-    void fallbackEqualToTheMainModelOrBlankIsIgnored() {
-        assertNull(new GeminiProperties("k", "m", null, null, null, "m").fallbackModel());
-        assertNull(new GeminiProperties("k", "m", null, null, null, " ").fallbackModel());
-        assertEquals(GeminiProperties.DEFAULT_MODEL, new GeminiProperties("k", null, null, null, null, null).model());
+    void blankValuesCountAsNotInformed() {
+        // os padrões ficam só no application.properties: em branco aqui é "não informado"
+        assertNull(new GeminiProperties("k", "m", "u", null, null, "m").fallbackModel(), "reserva igual ao principal");
+        GeminiProperties blank = new GeminiProperties("k", " ", "u", " ", 0, " ");
+        assertNull(blank.model());
+        assertNull(blank.thinkingLevel());
+        assertNull(blank.maxOutputTokens());
+        assertNull(blank.fallbackModel());
+        assertFalse(blank.configured());
+        assertTrue(new GeminiProperties("k", "m", "u", null, null, null).configured());
     }
 }
