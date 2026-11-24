@@ -46,7 +46,7 @@ class SupportChatServiceTest {
     }
 
     private SupportChatService withKey(String apiKey) {
-        return new SupportChatService(gemini, new GeminiProperties(apiKey, null, null, null, null), knowledge, limiter);
+        return new SupportChatService(gemini, new GeminiProperties(apiKey, null, null, null, null, null), knowledge, limiter);
     }
 
     @SuppressWarnings("unchecked")

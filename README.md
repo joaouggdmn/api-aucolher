@@ -107,7 +107,7 @@ src/main/java/com/aucolher/api/
 ├── support/                                # Assistente de suporte (balão do site), com o Google Gemini
 │   ├── SupportChatController.java          # POST /api/support/chat (público)
 │   ├── SupportChatService.java             # Valida, limita, monta a conversa e pergunta ao Gemini; não grava nada
-│   ├── GeminiClient.java                   # Chamada generateContent; a chave vai no cabeçalho
+│   ├── GeminiClient.java                   # Chamada generateContent (chave no cabeçalho), novas tentativas e modelo reserva
 │   ├── SupportKnowledge.java               # Lê a instrução de sistema (resources/support/assistente-prompt.md)
 │   ├── SupportRateLimiter.java             # 10 mensagens por minuto e 60 por dia, por conta ou IP
 │   ├── GeminiProperties.java / SupportConfig.java  # app.gemini.*
@@ -327,8 +327,9 @@ Cada linha é `NOME=valor`, sem aspas. Uma variável de ambiente de verdade, com
 | `MP_STATE_SECRET`     | Assina o `state` do OAuth                    | o valor de `JWT_SECRET` |
 | `MP_TEST_TOKEN`       | Deixe `false`: com `true` o Mercado Pago entrega um token `TEST-`, que a criação do PIX recusa (401) | `false` |
 | `GEMINI_API_KEY`      | Chave do Google AI Studio para o assistente de suporte | — (sem ela, o assistente responde 503) |
-| `GEMINI_MODEL`        | Modelo do Gemini                              | `gemini-3.6-flash` |
-| `GEMINI_THINKING_LEVEL` | Raciocínio do modelo (`MINIMAL`, `LOW`, `MEDIUM`, `HIGH`); os tokens dele contam como saída | `LOW` |
+| `GEMINI_MODEL`        | Modelo do Gemini (o leve responde em 1 a 2 s) | `gemini-3.5-flash-lite` |
+| `GEMINI_FALLBACK_MODEL` | Modelo reserva, usado quando o principal está sobrecarregado (503), no limite (429) ou sem resposta a tempo; vazio = sem reserva | `gemini-3.6-flash` |
+| `GEMINI_THINKING_LEVEL` | Raciocínio do modelo (`MINIMAL`, `LOW`, `MEDIUM`, `HIGH`); os tokens dele contam como saída e deixam a resposta lenta | `MINIMAL` |
 | `GEMINI_MAX_OUTPUT_TOKENS` | Limite de tokens da resposta, raciocínio incluído | `1024` |
 
 Sem `JWT_SECRET`, a API sobe gerando uma chave aleatória por execução (registra um WARN no log): dá para desenvolver, mas todo restart invalida os tokens já emitidos. Defina a variável em qualquer ambiente que não seja a sua máquina.
@@ -863,7 +864,8 @@ Contrato completo em `docs/entrega-final/api-assistente.md`, no frontend. É o b
 - A pergunta tem de 1 a 500 caracteres. O histórico fica no navegador e vai junto; a API usa só as últimas 20 falas.
 - A instrução de sistema (`src/main/resources/support/assistente-prompt.md`) limita o assistente ao AUcolher: ele não inventa regra, não pede dados pessoais e não faz nada pelo usuário.
 - Limite de 10 mensagens por minuto e 60 por dia, por conta logada ou, para visitante, por IP: depois disso, 429.
-- Sem `GEMINI_API_KEY`, ou com o Gemini fora do ar, 503 "O assistente está indisponível no momento. Tente de novo mais tarde.".
+- Quando o Google responde 503 ("high demand"), 429 ou não responde em 20 s, a API tenta de novo o modelo principal e depois o reserva (`GEMINI_FALLBACK_MODEL`). Erro de configuração (400, 401, 403, 404) não é repetido.
+- Sem `GEMINI_API_KEY`, ou com o Gemini fora do ar mesmo depois das tentativas, 503 "O assistente está indisponível no momento. Tente de novo mais tarde.".
 
 ### Denúncias
 

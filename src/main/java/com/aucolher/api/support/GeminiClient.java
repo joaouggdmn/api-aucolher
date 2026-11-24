@@ -7,6 +7,7 @@ import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
@@ -20,7 +21,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * Chamada ao Google Gemini (generateContent). A chave vai no cabeçalho x-goog-api-key, nunca na URL.
- * Não loga a chave nem o texto das mensagens: só o código HTTP quando dá erro.
+ * Não loga a chave nem o texto das mensagens: só o código HTTP e o modelo quando dá erro.
  */
 @Component
 public class GeminiClient {
@@ -44,30 +45,94 @@ public class GeminiClient {
         public int getStatus() {
             return status;
         }
+
+        /**
+         * Falha passageira, que vale tentar de novo: sem resposta a tempo (0), limite de uso (429)
+         * ou o Google sobrecarregado (5xx, como o 503 "high demand"). 400, 401, 403 e 404 são erro
+         * de configuração (chave ou modelo) e não mudam tentando de novo.
+         */
+        public boolean isTemporary() {
+            return status == 0 || status == 429 || status >= 500;
+        }
     }
+
+    /** Espera entre as tentativas; trocada nos testes para não deixá-los lentos. */
+    interface Sleeper {
+        void sleep(long millis) throws InterruptedException;
+    }
+
+    /** Pausa antes da 2ª e da 3ª tentativa. */
+    static final long[] BACKOFF_MS = {700, 1500};
 
     private final RestClient rest;
     private final GeminiProperties props;
     private final ObjectMapper mapper;
+    private final Sleeper sleeper;
 
+    @Autowired
     public GeminiClient(GeminiProperties props, ObjectMapper mapper) {
+        this(props, mapper, Thread::sleep);
+    }
+
+    GeminiClient(GeminiProperties props, ObjectMapper mapper, Sleeper sleeper) {
         this.props = props;
         this.mapper = mapper;
+        this.sleeper = sleeper;
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(10_000);
-        factory.setReadTimeout(30_000);
+        factory.setReadTimeout(20_000);
         this.rest = RestClient.builder().baseUrl(props.baseUrl()).requestFactory(factory).build();
     }
 
     /**
      * Manda a instrução de sistema e a conversa e devolve o texto da resposta,
      * ou null se o Gemini não devolveu texto (resposta bloqueada ou cortada).
+     * <p>
+     * Com falha passageira, tenta de novo o modelo principal e, se ainda falhar, o modelo
+     * reserva (outro modelo tem outra fila no Google). Sem resposta a tempo, não repete o mesmo
+     * modelo: vai direto para o reserva, para a pessoa não esperar duas vezes.
      */
     public String generate(String systemInstruction, List<Turn> turns) {
         Map<String, Object> body = buildBody(systemInstruction, turns);
+        List<String> plan = attemptPlan();
+        GeminiException last = null;
+        String lastModel = null;
+        int attempt = 0;
+        for (String model : plan) {
+            if (last != null && last.getStatus() == 0 && model.equals(lastModel)) {
+                continue;
+            }
+            if (attempt > 0) {
+                pause(BACKOFF_MS[Math.min(attempt - 1, BACKOFF_MS.length - 1)]);
+            }
+            attempt++;
+            try {
+                return call(model, body);
+            } catch (GeminiException e) {
+                log.warn("Gemini falhou (HTTP {}, modelo {}, tentativa {})", e.getStatus(), model, attempt);
+                if (!e.isTemporary()) {
+                    throw e;
+                }
+                last = e;
+                lastModel = model;
+            }
+        }
+        throw last;
+    }
+
+    /** Modelo principal duas vezes e, se houver, o reserva. */
+    List<String> attemptPlan() {
+        List<String> plan = new ArrayList<>(List.of(props.model(), props.model()));
+        if (props.fallbackModel() != null) {
+            plan.add(props.fallbackModel());
+        }
+        return plan;
+    }
+
+    private String call(String model, Map<String, Object> body) {
         try {
             String json = rest.post()
-                    .uri("/v1beta/models/{model}:generateContent", props.model())
+                    .uri("/v1beta/models/{model}:generateContent", model)
                     .header("x-goog-api-key", props.apiKey())
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(body)
@@ -75,10 +140,17 @@ public class GeminiClient {
                     .body(String.class);
             return extractText(json == null ? null : mapper.readTree(json));
         } catch (RestClientResponseException e) {
-            log.warn("Gemini respondeu HTTP {}", e.getStatusCode().value());
             throw new GeminiException(e.getStatusCode().value());
         } catch (RestClientException | JsonProcessingException e) {
-            log.warn("Falha ao chamar o Gemini: {}", e.getClass().getSimpleName());
+            throw new GeminiException(0);
+        }
+    }
+
+    private void pause(long millis) {
+        try {
+            sleeper.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
             throw new GeminiException(0);
         }
     }

@@ -10,6 +10,9 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
 
 import org.junit.jupiter.api.AfterEach;
@@ -22,18 +25,27 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
 
-/** Corpo, cabeçalho e leitura da resposta, contra um servidor falso no lugar do Google (GEMINI_BASE_URL). */
+/**
+ * Corpo, cabeçalho, leitura da resposta e as novas tentativas, contra um servidor falso no lugar
+ * do Google (GEMINI_BASE_URL). As pausas entre tentativas são registradas, não esperadas.
+ */
 class GeminiClientTest {
 
     private static final String REPLY_OK = """
             {"candidates":[{"content":{"role":"model","parts":[
               {"text":"pensando...","thought":true},{"text":"Para adotar, "},{"text":"use o AUmatch."}]}}]}""";
+    private static final String OVERLOADED = "{\"error\":{\"code\":503,\"status\":\"UNAVAILABLE\"}}";
+    private static final List<Turn> ONE_QUESTION = List.of(new Turn("user", "Como adotar?"));
+
+    private record Reply(int status, String body) {
+    }
 
     private final ObjectMapper mapper = new ObjectMapper();
+    private final Deque<Reply> queued = new ArrayDeque<>();
+    private final List<String> paths = new ArrayList<>();
+    private final List<Long> pauses = new ArrayList<>();
+    private Reply fallbackReply;
     private HttpServer server;
-    private int responseStatus;
-    private String responseBody;
-    private String lastPath;
     private String lastQuery;
     private String lastBody;
     private String lastApiKey;
@@ -42,13 +54,14 @@ class GeminiClientTest {
     void startFakeGemini() throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/v1beta/models/", exchange -> {
-            lastPath = exchange.getRequestURI().getPath();
+            paths.add(exchange.getRequestURI().getPath());
             lastQuery = exchange.getRequestURI().getQuery();
             lastBody = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
             lastApiKey = exchange.getRequestHeaders().getFirst("x-goog-api-key");
-            byte[] out = responseBody.getBytes(StandardCharsets.UTF_8);
+            Reply reply = queued.isEmpty() ? fallbackReply : queued.poll();
+            byte[] out = reply.body().getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "application/json");
-            exchange.sendResponseHeaders(responseStatus, out.length);
+            exchange.sendResponseHeaders(reply.status(), out.length);
             try (OutputStream os = exchange.getResponseBody()) {
                 os.write(out);
             }
@@ -62,22 +75,39 @@ class GeminiClientTest {
         server.stop(0);
     }
 
+    /** Resposta de todas as chamadas, menos as que estiverem na fila. */
     private void respond(int status, String body) {
-        this.responseStatus = status;
-        this.responseBody = body;
+        fallbackReply = new Reply(status, body);
     }
 
-    private GeminiClient client(String thinkingLevel) {
-        String baseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
-        return new GeminiClient(new GeminiProperties("chave-teste", "modelo-teste", baseUrl, thinkingLevel, 256), mapper);
+    /** Respostas das próximas chamadas, na ordem. */
+    private void queue(int status, String body) {
+        queued.add(new Reply(status, body));
     }
+
+    private String baseUrl() {
+        return "http://127.0.0.1:" + server.getAddress().getPort();
+    }
+
+    private GeminiClient client(String thinkingLevel, String fallbackModel) {
+        GeminiProperties props = new GeminiProperties("chave-teste", "modelo-leve", baseUrl(), thinkingLevel, 256,
+                fallbackModel);
+        return new GeminiClient(props, mapper, pauses::add);
+    }
+
+    private GeminiClient client() {
+        return client("MINIMAL", "modelo-reserva");
+    }
+
+    private static final String LEVE = "/v1beta/models/modelo-leve:generateContent";
+    private static final String RESERVA = "/v1beta/models/modelo-reserva:generateContent";
 
     @Test
     void sendsTheKeyInTheHeaderAndTheConversationInTheBody() throws IOException {
-        client("LOW").generate("Você é o assistente.", List.of(
+        client().generate("Você é o assistente.", List.of(
                 new Turn("user", "Oi"), new Turn("model", "Olá!"), new Turn("user", "Como adotar?")));
 
-        assertEquals("/v1beta/models/modelo-teste:generateContent", lastPath);
+        assertEquals(List.of(LEVE), paths);
         assertEquals("chave-teste", lastApiKey);
         assertNull(lastQuery, "a chave não pode ir na URL");
 
@@ -88,49 +118,93 @@ class GeminiClientTest {
         assertEquals("model", body.at("/contents/1/role").asText());
         assertEquals("Como adotar?", body.at("/contents/2/parts/0/text").asText());
         assertEquals(256, body.at("/generationConfig/maxOutputTokens").asInt());
-        assertEquals("LOW", body.at("/generationConfig/thinkingConfig/thinkingLevel").asText());
+        assertEquals("MINIMAL", body.at("/generationConfig/thinkingConfig/thinkingLevel").asText());
     }
 
     @Test
     void withoutThinkingLevelTheModelDefaultIsKept() throws IOException {
-        client(" ").generate("instrução", List.of(new Turn("user", "Oi")));
+        client(" ", null).generate("instrução", ONE_QUESTION);
 
         assertFalse(mapper.readTree(lastBody).at("/generationConfig").has("thinkingConfig"));
     }
 
     @Test
     void joinsTheTextPartsAndSkipsTheThoughts() {
-        String reply = client("LOW").generate("instrução", List.of(new Turn("user", "Como adotar?")));
-
-        assertEquals("Para adotar, use o AUmatch.", reply);
+        assertEquals("Para adotar, use o AUmatch.", client().generate("instrução", ONE_QUESTION));
     }
 
     @Test
     void blockedOrEmptyAnswerReturnsNull() {
         respond(200, "{\"candidates\":[{\"finishReason\":\"SAFETY\"}]}");
-        assertNull(client("LOW").generate("instrução", List.of(new Turn("user", "Oi"))));
+        assertNull(client().generate("instrução", ONE_QUESTION));
 
         respond(200, "{}");
-        assertNull(client("LOW").generate("instrução", List.of(new Turn("user", "Oi"))));
+        assertNull(client().generate("instrução", ONE_QUESTION));
     }
 
     @Test
-    void errorFromGoogleKeepsTheHttpStatus() {
-        respond(429, "{\"error\":{\"code\":429,\"status\":\"RESOURCE_EXHAUSTED\"}}");
+    void overloadedOnceTriesTheSameModelAgain() {
+        queue(503, OVERLOADED);
 
-        GeminiException ex = assertThrows(GeminiException.class,
-                () -> client("LOW").generate("instrução", List.of(new Turn("user", "Oi"))));
-        assertEquals(429, ex.getStatus());
+        assertEquals("Para adotar, use o AUmatch.", client().generate("instrução", ONE_QUESTION));
+        assertEquals(List.of(LEVE, LEVE), paths);
+        assertEquals(List.of(GeminiClient.BACKOFF_MS[0]), pauses);
     }
 
     @Test
-    void noAnswerFromTheServerBecomesStatusZero() {
-        GeminiClient client = client("LOW");
+    void stillOverloadedUsesTheFallbackModel() {
+        queue(503, OVERLOADED);
+        queue(429, "{\"error\":{\"code\":429}}");
+
+        assertEquals("Para adotar, use o AUmatch.", client().generate("instrução", ONE_QUESTION));
+        assertEquals(List.of(LEVE, LEVE, RESERVA), paths);
+        assertEquals(List.of(GeminiClient.BACKOFF_MS[0], GeminiClient.BACKOFF_MS[1]), pauses);
+    }
+
+    @Test
+    void whenEveryAttemptFailsTheLastErrorIsThrown() {
+        respond(503, OVERLOADED);
+
+        GeminiException ex = assertThrows(GeminiException.class, () -> client().generate("instrução", ONE_QUESTION));
+        assertEquals(503, ex.getStatus());
+        assertEquals(List.of(LEVE, LEVE, RESERVA), paths);
+    }
+
+    @Test
+    void withoutFallbackItStopsAfterTwoAttempts() {
+        respond(503, OVERLOADED);
+
+        assertThrows(GeminiException.class, () -> client("MINIMAL", null).generate("instrução", ONE_QUESTION));
+        assertEquals(List.of(LEVE, LEVE), paths);
+    }
+
+    @Test
+    void configurationErrorIsNotRetried() {
+        respond(400, "{\"error\":{\"code\":400,\"status\":\"INVALID_ARGUMENT\"}}");
+
+        GeminiException ex = assertThrows(GeminiException.class, () -> client().generate("instrução", ONE_QUESTION));
+        assertEquals(400, ex.getStatus());
+        assertFalse(ex.isTemporary());
+        assertEquals(List.of(LEVE), paths);
+        assertTrue(pauses.isEmpty());
+    }
+
+    @Test
+    void noAnswerSkipsTheSecondTryOfTheSameModel() {
+        GeminiClient client = client();
         server.stop(0);
 
-        GeminiException ex = assertThrows(GeminiException.class,
-                () -> client.generate("instrução", List.of(new Turn("user", "Oi"))));
+        GeminiException ex = assertThrows(GeminiException.class, () -> client.generate("instrução", ONE_QUESTION));
         assertEquals(0, ex.getStatus());
-        assertTrue(ex.getMessage().contains("0"));
+        assertTrue(ex.isTemporary());
+        // modelo leve sem resposta → direto para o reserva: uma pausa só, e não duas
+        assertEquals(List.of(GeminiClient.BACKOFF_MS[0]), pauses);
+    }
+
+    @Test
+    void fallbackEqualToTheMainModelOrBlankIsIgnored() {
+        assertNull(new GeminiProperties("k", "m", null, null, null, "m").fallbackModel());
+        assertNull(new GeminiProperties("k", "m", null, null, null, " ").fallbackModel());
+        assertEquals(GeminiProperties.DEFAULT_MODEL, new GeminiProperties("k", null, null, null, null, null).model());
     }
 }
